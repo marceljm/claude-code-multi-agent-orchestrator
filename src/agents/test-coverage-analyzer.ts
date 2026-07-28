@@ -1,11 +1,25 @@
-import type { AgentDefinition } from '@anthropic-ai/claude-agent-sdk';
+import type {
+  AgentDefinition
+} from '@anthropic-ai/claude-agent-sdk';
 
-import { TEST_COVERAGE_ANALYZER_PROMPT } from '../prompts/test-coverage-analyzer.prompt.js';
+import {
+  TEST_COVERAGE_ANALYZER_PROMPT
+} from '../prompts/test-coverage-analyzer.prompt.js';
 
-export const testCoverageAnalyzer: AgentDefinition = {
-  description:
-    'Invoke this agent to analyze test coverage, identify untested functions, and recommend actionable tests.',
-  prompt: TEST_COVERAGE_ANALYZER_PROMPT,
-  tools: ['Read', 'Grep', 'Glob', 'Skill'],
-  model: 'inherit'
-};
+export const testCoverageAnalyzer:
+  AgentDefinition = {
+    description:
+      'Invoke this agent exactly once to analyze test coverage for all assigned changed files and return one result per file.',
+
+    prompt:
+      TEST_COVERAGE_ANALYZER_PROMPT,
+
+    tools: [
+      'Read',
+      'Grep',
+      'Glob'
+    ],
+
+    model:
+      'inherit'
+  };

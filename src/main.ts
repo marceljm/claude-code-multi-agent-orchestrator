@@ -54,6 +54,7 @@ export interface ResolvedCliEnvironment {
     AuthenticationMethod;
   model: string;
   projectRoot: string;
+  maxTurns?: number;
 }
 
 export interface ReportPaths {
@@ -90,6 +91,7 @@ export interface CliDependencies {
     options: {
       model: string;
       projectRoot: string;
+      maxTurns?: number;
     }
   ): ReviewRunner;
 
@@ -150,6 +152,43 @@ function requireEnvironmentValue(
       ErrorCodes.INVALID_CONFIG,
       {
         variableName: name
+      }
+    );
+  }
+
+  return value;
+}
+
+function readOptionalPositiveInteger(
+  environment: NodeJS.ProcessEnv,
+  variableName: string
+): number | undefined {
+  const rawValue =
+    readEnvironmentValue(
+      environment,
+      variableName
+    );
+
+  if (rawValue === undefined) {
+    return undefined;
+  }
+
+  const value =
+    Number(rawValue);
+
+  if (
+    !Number.isSafeInteger(
+      value
+    ) ||
+    value <= 0
+  ) {
+    throw new ReviewError(
+      `${variableName} must be a positive safe integer.`,
+      ErrorCodes.INVALID_CONFIG,
+      {
+        variableName,
+        value:
+          rawValue
       }
     );
   }
@@ -276,6 +315,19 @@ export function resolveCliEnvironment(
     );
   }
 
+  const maxTurns =
+    readOptionalPositiveInteger(
+      environment,
+      'REVIEW_MAX_TURNS'
+    );
+
+  const optionalReviewSettings =
+    maxTurns === undefined
+      ? {}
+      : {
+        maxTurns
+      };
+
   const useBedrock =
     readEnvironmentValue(
       environment,
@@ -314,7 +366,8 @@ export function resolveCliEnvironment(
       authentication:
         'bedrock',
       model,
-      projectRoot
+      projectRoot,
+      ...optionalReviewSettings
     };
   }
 
@@ -331,7 +384,8 @@ export function resolveCliEnvironment(
       authentication:
         'anthropic',
       model,
-      projectRoot
+      projectRoot,
+      ...optionalReviewSettings
     };
   }
 
@@ -496,14 +550,29 @@ export async function runCli(
       `Reviewing ${target.owner}/${target.repo}#${target.prNumber}...\n`
     );
 
+    const orchestratorOptions = {
+      model:
+        runtime.model,
+
+      projectRoot:
+        runtime.projectRoot,
+
+      ...(
+        runtime.maxTurns ===
+          undefined
+          ? {}
+          : {
+            maxTurns:
+              runtime.maxTurns
+          }
+      )
+    };
+
     const orchestrator =
       dependencies
-        .createOrchestrator({
-          model:
-            runtime.model,
-          projectRoot:
-            runtime.projectRoot
-        });
+        .createOrchestrator(
+          orchestratorOptions
+        );
 
     const report =
       await orchestrator

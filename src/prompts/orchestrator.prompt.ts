@@ -89,16 +89,79 @@ invocation.
 
 Wait for the Skill tool result and apply its loaded instructions to the review.
 
-When constructing the code-quality-analyzer delegation, include the changed source, patch, repository context, and ESLint evidence. Pass the loaded javascript-best-practices guidance to the code-quality-analyzer agent.
+### 4. Build one complete pull-request evidence bundle
 
-The code-quality-analyzer may invoke the Skill again through its own configured
-Skill tool, but that does not replace this mandatory orchestrator invocation.
+Construct one compact evidence bundle for the complete pull request.
 
-For every changed file, Include the changed file path, patch, full content, and relevant repository context in each subagent request. Do not instruct a subagent to fetch GitHub data itself.
+List every changed file exactly once and preserve the changed-file order returned
+by GitHub MCP.
 
-All three subagents are required for every changed file. Use the Task tool to invoke the code-quality-analyzer agent. Use the Task tool to invoke the test-coverage-analyzer agent. Use the Task tool to invoke the refactoring-suggester agent. Start all three Task invocations for a file in parallel. Do not wait for one independent analysis to finish before starting another. Every required subagent must return its complete structured result.
+For every changed file, include:
 
-If GitHub retrieval fails, an applicable required ESLint operation fails, a subagent fails, a subagent result is missing, a subagent result is malformed, or a subagent result identifies the wrong file, Fail the complete review. Do not generate a partial ReviewReport. Do not fabricate a missing result.
+- repository-relative file path
+- patch
+- full changed-file content
+- relevant surrounding source context
+- relevant existing test context
+
+Include the pull-request metadata, ESLint findings or limitation diagnostic, and
+the loaded javascript-best-practices guidance where relevant.
+
+Do not repeatedly fetch or duplicate the same evidence for separate files after
+the complete bundle has been assembled.
+
+### 5. Invoke exactly three PR-level specialists
+
+Invoke exactly three specialized Task calls total for the complete pull request.
+
+Invoke code-quality-analyzer exactly once.
+
+Invoke test-coverage-analyzer exactly once.
+
+Invoke refactoring-suggester exactly once.
+
+Start all three Task calls in one parallel tool-use batch.
+
+Pass the complete pull-request evidence bundle to each specialist. Give each
+specialist only its role-specific instructions in addition to the shared
+evidence.
+
+Do not invoke Task or Agent once per file.
+
+Do not invoke any specialized agent more than once.
+
+Do not invoke a specialist again when its result is missing, malformed, or
+incorrect. A specialist failure must fail the complete review.
+
+After the three specialist results return, do not call Task or Agent again.
+
+Each specialist must return exactly one JSON array with one result for every changed file, in the same file order as the evidence bundle.
+
+The code-quality-analyzer array must contain one CodeQualityResultSchema object
+per changed file.
+
+The test-coverage-analyzer array must contain one TestCoverageResultSchema object
+per changed file.
+
+The refactoring-suggester array must contain one
+RefactoringSuggestionSchema object per changed file.
+
+Validate all three arrays before aggregation.
+
+Reject missing, duplicate, unknown, or incorrectly ordered file results.
+
+Reject a result whose nested file property differs from its assigned changed
+file.
+
+Merge the three arrays by exact repository-relative file path to construct one
+fileReviews entry per changed file.
+
+If GitHub retrieval fails, an applicable required ESLint operation fails, a
+specialist fails, a specialist result is missing, a result array is malformed,
+or a result identifies the wrong file, fail the complete review. Do not
+generate a partial ReviewReport and do not fabricate missing results.
+
+Do not alter the final ReviewReport schema or deterministic summary rules.
 
 Aggregate the results into exactly this ReviewReportSchema structure:
 {

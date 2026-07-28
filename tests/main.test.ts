@@ -19,6 +19,10 @@ import type {
   ReviewReport
 } from '../src/types/index.js';
 
+import {
+  ErrorCodes
+} from '../src/utils/error-handler.js';
+
 const validEnvironment = {
   ANTHROPIC_API_KEY: 'test-api-key',
   ANTHROPIC_MODEL: 'claude-sonnet-4-5-20250929',
@@ -108,6 +112,48 @@ describe('resolveCliEnvironment', () => {
     });
   });
 
+  it('parses an optional positive REVIEW_MAX_TURNS value', () => {
+    expect(resolveCliEnvironment({
+      ...validEnvironment,
+      REVIEW_MAX_TURNS: '120'
+    })).toEqual({
+      authentication: 'anthropic',
+      model: 'claude-sonnet-4-5-20250929',
+      projectRoot: '/tmp/code-review-project',
+      maxTurns: 120
+    });
+  });
+
+  it.each([
+    '0',
+    '-1',
+    '1.5',
+    'not-a-number',
+    '9007199254740992'
+  ])(
+    'rejects invalid REVIEW_MAX_TURNS value %j',
+    value => {
+      try {
+        resolveCliEnvironment({
+          ...validEnvironment,
+          REVIEW_MAX_TURNS: value
+        });
+
+        throw new Error(
+          'Expected REVIEW_MAX_TURNS validation to fail.'
+        );
+      } catch (error) {
+        expect(error).toMatchObject({
+          code: ErrorCodes.INVALID_CONFIG,
+          metadata: {
+            variableName: 'REVIEW_MAX_TURNS',
+            value
+          }
+        });
+      }
+    }
+  );
+
   it('requires explicit and complete Bedrock configuration', () => {
     expect(() => resolveCliEnvironment({
       ANTHROPIC_MODEL: 'model',
@@ -168,6 +214,35 @@ describe('runCli', () => {
     );
     expect(fixture.writeFile).toHaveBeenCalledWith(
       '/tmp/workspace/reports/owner-repo-pr-7.json', '{}', 'utf8'
+    );
+  });
+
+  it('forwards REVIEW_MAX_TURNS to the orchestrator', async () => {
+    const fixture = createDependencies();
+
+    await expect(runCli(
+      [
+        'airaamane',
+        'simple-todo-app',
+        '2'
+      ],
+      {
+        ...validEnvironment,
+        REVIEW_MAX_TURNS: '120'
+      },
+      fixture.dependencies
+    )).resolves.toBe(0);
+
+    expect(fixture.createOrchestrator).toHaveBeenCalledWith({
+      model: 'claude-sonnet-4-5-20250929',
+      projectRoot: '/tmp/code-review-project',
+      maxTurns: 120
+    });
+
+    expect(fixture.reviewPullRequest).toHaveBeenCalledWith(
+      'airaamane',
+      'simple-todo-app',
+      2
     );
   });
 });

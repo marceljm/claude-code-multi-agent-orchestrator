@@ -65,6 +65,13 @@ const FORBIDDEN_WRITE_CAPABLE_TOOLS =
     'edit'
   ]);
 
+const SPECIALIZED_AGENT_NAMES =
+  new Set([
+    'code-quality-analyzer',
+    'test-coverage-analyzer',
+    'refactoring-suggester'
+  ]);
+
 const REQUIRED_AGENT_VERSION_KEYS = [
   'orchestrator',
   'codeQualityAnalyzer',
@@ -102,6 +109,32 @@ function isRecord(
     value !== null &&
     !Array.isArray(value)
   );
+}
+
+function getDelegatedAgentName(
+  toolInput:
+    Record<string, unknown>
+): string | undefined {
+  for (
+    const key
+    of [
+      'subagent_type',
+      'agent',
+      'name'
+    ]
+  ) {
+    const value =
+      toolInput[key];
+
+    if (
+      typeof value === 'string' &&
+      value.trim().length > 0
+    ) {
+      return value.trim();
+    }
+  }
+
+  return undefined;
 }
 
 function requireNonEmptyString(
@@ -401,6 +434,9 @@ export class CodeReviewOrchestrator {
     let javascriptBestPracticesLoaded =
       false;
 
+    const delegatedAgents =
+      new Set<string>();
+
     const denyWriteCapableTools:
       HookCallback = async input => {
         if (
@@ -468,6 +504,100 @@ export class CodeReviewOrchestrator {
             }
           };
         }
+
+        return {};
+      };
+
+    const enforceSingleSpecialistInvocation:
+      HookCallback = async input => {
+        if (
+          input.hook_event_name !==
+            'PreToolUse'
+        ) {
+          return {};
+        }
+
+        const preToolInput =
+          input as PreToolUseHookInput;
+
+        const normalizedToolName =
+          preToolInput.tool_name
+            .trim()
+            .toLowerCase();
+
+        if (
+          normalizedToolName !==
+            'task' &&
+          normalizedToolName !==
+            'agent'
+        ) {
+          return {};
+        }
+
+        /*
+         * The existing Skill hook owns the pre-Skill rejection. Do not record an
+         * attempted delegation until the required Skill has completed.
+         */
+        if (
+          !javascriptBestPracticesLoaded
+        ) {
+          return {};
+        }
+
+        const toolInput =
+          isRecord(
+            preToolInput.tool_input
+          )
+            ? preToolInput.tool_input
+            : {};
+
+        const agentName =
+          getDelegatedAgentName(
+            toolInput
+          );
+
+        if (
+          agentName === undefined ||
+          !SPECIALIZED_AGENT_NAMES.has(
+            agentName
+          )
+        ) {
+          return {
+            hookSpecificOutput: {
+              hookEventName:
+                'PreToolUse',
+
+              permissionDecision:
+                'deny',
+
+              permissionDecisionReason:
+                'Only the three configured code-review specialists may be delegated.'
+            }
+          };
+        }
+
+        if (
+          delegatedAgents.has(
+            agentName
+          )
+        ) {
+          return {
+            hookSpecificOutput: {
+              hookEventName:
+                'PreToolUse',
+
+              permissionDecision:
+                'deny',
+
+              permissionDecisionReason:
+                `${agentName} has already been invoked. Do not retry or invoke a specialist more than once.`
+            }
+          };
+        }
+
+        delegatedAgents.add(
+          agentName
+        );
 
         return {};
       };
@@ -555,7 +685,8 @@ export class CodeReviewOrchestrator {
             {
               hooks: [
                 denyWriteCapableTools,
-                enforceSkillBeforeDelegation
+                enforceSkillBeforeDelegation,
+                enforceSingleSpecialistInvocation
               ]
             }
           ],

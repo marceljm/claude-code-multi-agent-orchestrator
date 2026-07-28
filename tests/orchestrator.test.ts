@@ -301,6 +301,209 @@ describe('CodeReviewOrchestrator', () => {
       });
     });
 
+    it(
+      'allows each specialist once and denies duplicate delegation',
+      async () => {
+        const {
+          queryFn,
+          mock
+        } =
+          createSuccessfulQueryMock();
+
+        const orchestrator =
+          createOrchestrator(
+            queryFn
+          );
+
+        await orchestrator
+          .reviewPullRequest(
+            'airaamane',
+            'simple-todo-app',
+            2
+          );
+
+        type TestHook = (
+          input: unknown,
+          toolUseId: string,
+          context: {
+            signal:
+              AbortSignal;
+          }
+        ) =>
+          Promise<
+            Record<string, unknown>
+          >;
+
+        const call =
+          mock.mock.calls[0]?.[0] as {
+            options: {
+              hooks: {
+                PreToolUse:
+                  Array<{
+                    hooks:
+                      TestHook[];
+                  }>;
+
+                PostToolUse:
+                  Array<{
+                    hooks:
+                      TestHook[];
+                  }>;
+              };
+            };
+          };
+
+        const duplicateGuard =
+          call.options
+            .hooks
+            .PreToolUse[0]
+            ?.hooks[2];
+
+        const skillCompletion =
+          call.options
+            .hooks
+            .PostToolUse[0]
+            ?.hooks[0];
+
+        expect(
+          duplicateGuard
+        ).toBeDefined();
+
+        expect(
+          skillCompletion
+        ).toBeDefined();
+
+        const context = {
+          signal:
+            new AbortController()
+              .signal
+        };
+
+        await skillCompletion!(
+          {
+            hook_event_name:
+              'PostToolUse',
+
+            session_id:
+              'test-session',
+
+            cwd:
+              PROJECT_ROOT,
+
+            tool_name:
+              'Skill',
+
+            tool_input: {
+              skill:
+                'javascript-best-practices'
+            },
+
+            tool_response: {
+              result:
+                'loaded'
+            }
+          },
+          'skill-completed',
+          context
+        );
+
+        const first =
+          await duplicateGuard!(
+            {
+              hook_event_name:
+                'PreToolUse',
+
+              session_id:
+                'test-session',
+
+              cwd:
+                PROJECT_ROOT,
+
+              tool_name:
+                'Task',
+
+              tool_input: {
+                subagent_type:
+                  'code-quality-analyzer'
+              }
+            },
+            'first-code-quality',
+            context
+          );
+
+        expect(first).toEqual({});
+
+        const duplicate =
+          await duplicateGuard!(
+            {
+              hook_event_name:
+                'PreToolUse',
+
+              session_id:
+                'test-session',
+
+              cwd:
+                PROJECT_ROOT,
+
+              tool_name:
+                'Task',
+
+              tool_input: {
+                subagent_type:
+                  'code-quality-analyzer'
+              }
+            },
+            'duplicate-code-quality',
+            context
+          );
+
+        expect(
+          duplicate
+        ).toMatchObject({
+          hookSpecificOutput: {
+            hookEventName:
+              'PreToolUse',
+
+            permissionDecision:
+              'deny'
+          }
+        });
+
+        for (
+          const agentName
+          of [
+            'test-coverage-analyzer',
+            'refactoring-suggester'
+          ]
+        ) {
+          await expect(
+            duplicateGuard!(
+              {
+                hook_event_name:
+                  'PreToolUse',
+
+                session_id:
+                  'test-session',
+
+                cwd:
+                  PROJECT_ROOT,
+
+                tool_name:
+                  'Task',
+
+                tool_input: {
+                  subagent_type:
+                    agentName
+                }
+              },
+              `first-${agentName}`,
+              context
+            )
+          ).resolves.toEqual({});
+        }
+      }
+    );
+
     it('blocks delegation until javascript-best-practices has been invoked', async () => {
       const {
         queryFn,
