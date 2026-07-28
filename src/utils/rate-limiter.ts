@@ -1,95 +1,235 @@
-/**
- * Rate Limiter for API requests and token usage
- * Prevents exceeding Anthropic API rate limits
- *
- * This implements a token bucket algorithm with sliding window.
- *
- * Concepts:
- * - Tracks requests and tokens used in the last 60 seconds (sliding window)
- * - Limits concurrent requests to prevent overwhelming the API
- * - Uses token estimation to prevent exceeding token-per-minute limits
- */
+import {
+  ErrorCodes,
+  ReviewError
+} from './error-handler.js';
 
+/**
+ * Rate-limiter configuration.
+ */
 export interface RateLimiterConfig {
-  /** Maximum requests per minute */
+  /** Maximum admitted requests during one sliding window. */
   maxRequestsPerMinute: number;
-  /** Maximum tokens per minute */
+
+  /** Maximum admitted tokens during one sliding window. */
   maxTokensPerMinute: number;
-  /** Maximum concurrent requests */
+
+  /** Maximum number of operations running concurrently. */
   maxConcurrent: number;
 }
 
-export const DEFAULT_RATE_LIMITS: RateLimiterConfig = {
-  maxRequestsPerMinute: 50,      // Conservative default
-  maxTokensPerMinute: 100000,    // ~100k tokens/min
-  maxConcurrent: 5               // Max parallel requests
-};
+/**
+ * Conservative default limits.
+ */
+export const DEFAULT_RATE_LIMITS:
+  RateLimiterConfig = {
+    maxRequestsPerMinute: 50,
+    maxTokensPerMinute: 100000,
+    maxConcurrent: 5
+  };
 
 interface RequestRecord {
   timestamp: number;
   tokens: number;
 }
 
+const RATE_WINDOW_MS = 60000;
+
+function assertPositiveInteger(
+  value: number,
+  name: keyof RateLimiterConfig
+): void {
+  if (
+    !Number.isInteger(value) ||
+    value <= 0
+  ) {
+    throw new ReviewError(
+      `${name} must be a positive integer.`,
+      ErrorCodes.INVALID_CONFIG,
+      {
+        [name]: value
+      }
+    );
+  }
+}
+
+function assertTokenCount(
+  value: number,
+  name:
+    | 'estimatedTokens'
+    | 'actualTokens'
+): void {
+  if (
+    !Number.isInteger(value) ||
+    value < 0
+  ) {
+    throw new ReviewError(
+      `${name} must be a non-negative integer.`,
+      ErrorCodes.INVALID_CONFIG,
+      {
+        [name]: value
+      }
+    );
+  }
+}
+
+function sleep(
+  delayMs: number
+): Promise<void> {
+  return new Promise(resolve => {
+    setTimeout(
+      resolve,
+      delayMs
+    );
+  });
+}
+
 /**
- * Token bucket rate limiter with sliding window
+ * FIFO sliding-window limiter for request, token, and concurrency limits.
+ *
+ * Acquisitions are serialized while capacity is reserved. This prevents two
+ * callers from observing the same available slot and both reserving it.
  */
 export class RateLimiter {
-  private config: RateLimiterConfig;
-  private requestHistory: RequestRecord[] = [];
-  private activeRequests: number = 0;
-  private waitQueue: Array<() => void> = [];
+  private readonly config:
+    RateLimiterConfig;
 
-  constructor(config: Partial<RateLimiterConfig> = {}) {
-    this.config = { ...DEFAULT_RATE_LIMITS, ...config };
+  private requestHistory:
+    RequestRecord[] = [];
+
+  private activeRequests = 0;
+
+  private waitQueue:
+    Array<() => void> = [];
+
+  private acquisitionLock:
+    Promise<void> =
+      Promise.resolve();
+
+  constructor(
+    config:
+      Partial<RateLimiterConfig> = {}
+  ) {
+    const mergedConfig = {
+      ...DEFAULT_RATE_LIMITS,
+      ...config
+    };
+
+    assertPositiveInteger(
+      mergedConfig.maxRequestsPerMinute,
+      'maxRequestsPerMinute'
+    );
+
+    assertPositiveInteger(
+      mergedConfig.maxTokensPerMinute,
+      'maxTokensPerMinute'
+    );
+
+    assertPositiveInteger(
+      mergedConfig.maxConcurrent,
+      'maxConcurrent'
+    );
+
+    this.config = mergedConfig;
   }
 
   /**
-   * Wait until a request can be made within rate limits
-   *
-   * This is the main entry point for rate limiting.
-   * It ensures:
-   * 1. Concurrent request limit is not exceeded
-   * 2. Request and token rate limits are respected
-   * 3. The request is recorded for future rate limit calculations
-   *
-   * @param estimatedTokens - Estimated tokens for this request
+   * Wait until one operation can be admitted.
    */
-  async acquire(estimatedTokens: number = 1000): Promise<void> {
-    // TODO: Implement acquire logic
-    // Steps:
-    // 1. Wait for a concurrent slot if maxConcurrent is reached
-    //    - Use waitForSlot() helper
-    // 2. Wait for rate limit availability
-    //    - Use waitForRateLimit(estimatedTokens) helper
-    // 3. Increment activeRequests
-    // 4. Add a record to requestHistory with current timestamp and estimatedTokens
+  async acquire(
+    estimatedTokens: number = 1000
+  ): Promise<void> {
+    assertTokenCount(
+      estimatedTokens,
+      'estimatedTokens'
+    );
 
-    throw new Error('Not implemented');
+    if (
+      estimatedTokens >
+        this.config.maxTokensPerMinute
+    ) {
+      throw new ReviewError(
+        'The estimated token count exceeds the configured per-minute token limit.',
+        ErrorCodes.RATE_LIMITED,
+        {
+          estimatedTokens,
+          maxTokensPerMinute:
+            this.config.maxTokensPerMinute
+        }
+      );
+    }
+
+    const unlock =
+      await this.lockAcquisition();
+
+    try {
+      while (
+        this.activeRequests >=
+          this.config.maxConcurrent
+      ) {
+        await this.waitForSlot();
+      }
+
+      await this.waitForRateLimit(
+        estimatedTokens
+      );
+
+      this.activeRequests += 1;
+
+      this.requestHistory.push({
+        timestamp: Date.now(),
+        tokens: estimatedTokens
+      });
+    } finally {
+      unlock();
+    }
   }
 
   /**
-   * Release a request slot after completion
-   * @param actualTokens - Actual tokens used (updates estimate)
+   * Release one active operation.
+   *
+   * When actualTokens is supplied, it replaces the latest request estimate.
+   * This preserves the starter API while allowing a completed operation to
+   * correct its estimate.
    */
-  release(actualTokens?: number): void {
-    this.activeRequests = Math.max(0, this.activeRequests - 1);
+  release(
+    actualTokens?: number
+  ): void {
+    if (actualTokens !== undefined) {
+      assertTokenCount(
+        actualTokens,
+        'actualTokens'
+      );
+    }
 
-    // Update last request with actual token count if provided
-    if (actualTokens !== undefined && this.requestHistory.length > 0) {
-      const lastRequest = this.requestHistory[this.requestHistory.length - 1];
+    if (this.activeRequests === 0) {
+      return;
+    }
+
+    if (
+      actualTokens !== undefined &&
+      this.requestHistory.length > 0
+    ) {
+      const lastRequest =
+        this.requestHistory[
+          this.requestHistory.length - 1
+        ];
 
       if (lastRequest) {
-        lastRequest.tokens = actualTokens;
+        lastRequest.tokens =
+          actualTokens;
       }
     }
 
-    // Wake up next waiting request
-    const next = this.waitQueue.shift();
-    if (next) next();
+    this.activeRequests -= 1;
+
+    const next =
+      this.waitQueue.shift();
+
+    next?.();
   }
 
   /**
-   * Get current rate limit status
+   * Return the current sliding-window status.
    */
   getStatus(): {
     activeRequests: number;
@@ -100,119 +240,204 @@ export class RateLimiter {
   } {
     this.pruneOldRecords();
 
-    const requestsInWindow = this.requestHistory.length;
-    const tokensInWindow = this.requestHistory.reduce((sum, r) => sum + r.tokens, 0);
+    const requestsInWindow =
+      this.requestHistory.length;
+
+    const tokensInWindow =
+      this.requestHistory.reduce(
+        (
+          sum,
+          record
+        ) => sum + record.tokens,
+        0
+      );
 
     return {
-      activeRequests: this.activeRequests,
+      activeRequests:
+        this.activeRequests,
+
       requestsInWindow,
+
       tokensInWindow,
-      availableRequests: Math.max(0, this.config.maxRequestsPerMinute - requestsInWindow),
-      availableTokens: Math.max(0, this.config.maxTokensPerMinute - tokensInWindow)
+
+      availableRequests:
+        Math.max(
+          0,
+          this.config
+            .maxRequestsPerMinute -
+            requestsInWindow
+        ),
+
+      availableTokens:
+        Math.max(
+          0,
+          this.config
+            .maxTokensPerMinute -
+            tokensInWindow
+        )
     };
   }
 
   /**
-   * Check if request can proceed immediately
-   *
-   * @param estimatedTokens - Estimated tokens for the request
-   * @returns true if the request can proceed without waiting
+   * Check whether an operation could be admitted immediately.
    */
-  canProceed(estimatedTokens: number = 1000): boolean {
-    // TODO: Implement canProceed check
-    // Steps:
-    // 1. Call pruneOldRecords() to remove stale entries
-    // 2. Check if activeRequests < maxConcurrent
-    // 3. Calculate requestsInWindow (length of requestHistory)
-    // 4. Calculate tokensInWindow (sum of tokens in requestHistory)
-    // 5. Return true if ALL conditions are met:
-    //    - activeRequests < maxConcurrent
-    //    - requestsInWindow < maxRequestsPerMinute
-    //    - tokensInWindow + estimatedTokens <= maxTokensPerMinute
+  canProceed(
+    estimatedTokens: number = 1000
+  ): boolean {
+    assertTokenCount(
+      estimatedTokens,
+      'estimatedTokens'
+    );
 
-    throw new Error('Not implemented');
+    if (
+      estimatedTokens >
+        this.config.maxTokensPerMinute
+    ) {
+      return false;
+    }
+
+    this.pruneOldRecords();
+
+    const requestsInWindow =
+      this.requestHistory.length;
+
+    const tokensInWindow =
+      this.requestHistory.reduce(
+        (
+          sum,
+          record
+        ) => sum + record.tokens,
+        0
+      );
+
+    return (
+      this.activeRequests <
+        this.config.maxConcurrent &&
+      requestsInWindow <
+        this.config
+          .maxRequestsPerMinute &&
+      tokensInWindow +
+        estimatedTokens <=
+        this.config
+          .maxTokensPerMinute
+    );
   }
 
   /**
-   * Wait for a concurrent request slot to become available
-   *
-   * This creates a Promise that resolves when release() is called
-   * and there's a queued waiter.
+   * Acquire the internal FIFO admission lock.
    */
-  private async waitForSlot(): Promise<void> {
-    // TODO: Implement waitForSlot
-    // Hint: Create a new Promise and add its resolve function to waitQueue
-    // The resolve function will be called by release()
+  private async lockAcquisition():
+    Promise<() => void> {
+    const previous =
+      this.acquisitionLock;
 
-    throw new Error('Not implemented');
+    let unlock:
+      (() => void) | undefined;
+
+    this.acquisitionLock =
+      new Promise<void>(resolve => {
+        unlock = resolve;
+      });
+
+    await previous;
+
+    if (!unlock) {
+      throw new ReviewError(
+        'Unable to initialize the rate-limiter acquisition lock.',
+        ErrorCodes.UNKNOWN_ERROR
+      );
+    }
+
+    return unlock;
   }
 
   /**
-   * Wait until rate limits allow the request to proceed
-   *
-   * This implements the sliding window algorithm.
-   * If we can't proceed immediately, we calculate how long to wait
-   * until the oldest request expires (falls out of the 60-second window).
-   *
-   * @param estimatedTokens - Estimated tokens for the request
+   * Wait for one active-operation slot.
    */
-  private async waitForRateLimit(estimatedTokens: number): Promise<void> {
-    // TODO: Implement waitForRateLimit
-    // Steps:
-    // 1. Loop while canProceed(estimatedTokens) returns false
-    // 2. Call pruneOldRecords() to remove expired entries
-    // 3. If requestHistory is empty, break (no need to wait)
-    // 4. Calculate wait time:
-    //    - Get oldest timestamp: requestHistory[0].timestamp
-    //    - Calculate when it expires: oldestTimestamp + 60000 (60 seconds)
-    //    - Wait time = expiration time - now + small buffer (100ms)
-    //    - Use Math.max(100, waitTime) to ensure minimum wait
-    //    - Use Math.min(waitTime, 5000) to cap at 5 seconds
-    // 5. Sleep for the calculated wait time
-    // 6. Loop continues and checks again
-
-    throw new Error('Not implemented');
+  private waitForSlot():
+    Promise<void> {
+    return new Promise(resolve => {
+      this.waitQueue.push(resolve);
+    });
   }
 
   /**
-   * Remove request records older than 60 seconds (sliding window)
-   *
-   * This is called before checking rate limits to ensure we only
-   * count requests in the current 60-second window.
+   * Wait until the oldest relevant record leaves the sliding window.
+   */
+  private async waitForRateLimit(
+    estimatedTokens: number
+  ): Promise<void> {
+    while (
+      !this.canProceed(
+        estimatedTokens
+      )
+    ) {
+      this.pruneOldRecords();
+
+      const oldestRequest =
+        this.requestHistory[0];
+
+      if (!oldestRequest) {
+        return;
+      }
+
+      const expiresAt =
+        oldestRequest.timestamp +
+        RATE_WINDOW_MS;
+
+      const waitMs =
+        Math.max(
+          1,
+          expiresAt - Date.now()
+        );
+
+      await sleep(waitMs);
+    }
+  }
+
+  /**
+   * Remove records that are no longer inside the 60-second window.
    */
   private pruneOldRecords(): void {
-    // TODO: Implement pruneOldRecords
-    // Steps:
-    // 1. Calculate the cutoff timestamp: Date.now() - 60000
-    // 2. Filter requestHistory to keep only records where timestamp > cutoff
-    // Hint: Use Array.filter()
+    const cutoff =
+      Date.now() -
+      RATE_WINDOW_MS;
 
-    throw new Error('Not implemented');
+    this.requestHistory =
+      this.requestHistory.filter(
+        record =>
+          record.timestamp > cutoff
+      );
   }
 }
 
 /**
- * Wrap an async function with rate limiting
- *
- * This is a convenience function for applying rate limiting to any async operation.
+ * Run one operation while holding a rate-limiter reservation.
  */
-export function withRateLimit<T>(
+export async function withRateLimit<T>(
   rateLimiter: RateLimiter,
   fn: () => Promise<T>,
   estimatedTokens: number = 1000
 ): Promise<T> {
-  return new Promise(async (resolve, reject) => {
-    try {
-      await rateLimiter.acquire(estimatedTokens);
-      const result = await fn();
+  let acquired = false;
+
+  try {
+    await rateLimiter.acquire(
+      estimatedTokens
+    );
+
+    acquired = true;
+
+    return await fn();
+  } finally {
+    if (acquired) {
       rateLimiter.release();
-      resolve(result);
-    } catch (error) {
-      rateLimiter.release();
-      reject(error);
     }
-  });
+  }
 }
 
-// Global rate limiter instance
-export const globalRateLimiter = new RateLimiter();
+/**
+ * Shared limiter for callers that do not require isolated limits.
+ */
+export const globalRateLimiter =
+  new RateLimiter();
