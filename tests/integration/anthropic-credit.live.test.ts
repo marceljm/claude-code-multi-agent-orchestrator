@@ -11,8 +11,8 @@ const LIVE =
     .RUN_LIVE_ANTHROPIC_CREDIT_CHECK ===
   '1';
 
-const DEFAULT_BASE_URL =
-  'https://api.anthropic.com';
+const ANTHROPIC_MESSAGES_URL =
+  'https://api.anthropic.com/v1/messages';
 
 interface AnthropicSuccessBody {
   id?: unknown;
@@ -49,28 +49,6 @@ function requireEnvironmentVariable(
   }
 
   return value;
-}
-
-function buildMessagesUrl(
-  baseUrl: string
-): string {
-  const normalized =
-    baseUrl
-      .trim()
-      .replace(
-        /\/+$/,
-        ''
-      );
-
-  if (
-    normalized.endsWith(
-      '/v1'
-    )
-  ) {
-    return `${normalized}/messages`;
-  }
-
-  return `${normalized}/v1/messages`;
 }
 
 function redact(
@@ -236,15 +214,18 @@ describe.skipIf(
             'ANTHROPIC_MODEL'
           );
 
-        const baseUrl =
+        if (
           process.env
             .ANTHROPIC_BASE_URL
-            ?.trim() ||
-          DEFAULT_BASE_URL;
+            ?.trim()
+        ) {
+          throw new Error(
+            'ANTHROPIC_BASE_URL must be unset for the direct Anthropic credit smoke test.'
+          );
+        }
 
         const sensitiveValues = [
-          apiKey,
-          baseUrl
+          apiKey
         ];
 
         const controller =
@@ -263,9 +244,7 @@ describe.skipIf(
         try {
           response =
             await fetch(
-              buildMessagesUrl(
-                baseUrl
-              ),
+              ANTHROPIC_MESSAGES_URL,
               {
                 method:
                   'POST',

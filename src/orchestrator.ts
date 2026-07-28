@@ -23,6 +23,11 @@ import {
 } from './prompts/index.js';
 
 import {
+  ErrorCodes,
+  ReviewError
+} from './utils/error-handler.js';
+
+import {
   ReviewReportJSONSchema,
   ReviewReportSchema
 } from './types/index.js';
@@ -89,6 +94,7 @@ export interface OrchestratorOptions {
   model?: string;
   projectRoot?: string;
   maxTurns?: number;
+  maxBudgetUsd?: number;
   queryFn?: QueryFunction;
   onMessage?: (
     message: unknown
@@ -349,6 +355,7 @@ export class CodeReviewOrchestrator {
   private readonly model: string;
   private readonly projectRoot: string;
   private readonly maxTurns: number;
+  private readonly maxBudgetUsd?: number;
   private readonly queryFn: QueryFunction;
   private readonly onMessage?: (
     message: unknown
@@ -380,6 +387,24 @@ export class CodeReviewOrchestrator {
         'maxTurns must be a positive integer.'
       );
     }
+
+    if (
+      options.maxBudgetUsd !== undefined &&
+      (
+        !Number.isFinite(options.maxBudgetUsd) ||
+        options.maxBudgetUsd <= 0
+      )
+    ) {
+      throw new ReviewError(
+        'maxBudgetUsd must be a positive finite number.',
+        ErrorCodes.INVALID_CONFIG,
+        {
+          maxBudgetUsd: options.maxBudgetUsd
+        }
+      );
+    }
+
+    this.maxBudgetUsd = options.maxBudgetUsd;
 
     this.queryFn = options.queryFn ?? query;
     this.onMessage = options.onMessage;
@@ -436,6 +461,9 @@ export class CodeReviewOrchestrator {
 
     const delegatedAgents =
       new Set<string>();
+
+    const abortController =
+      new AbortController();
 
     const denyWriteCapableTools:
       HookCallback = async input => {
@@ -562,6 +590,12 @@ export class CodeReviewOrchestrator {
             agentName
           )
         ) {
+          abortController.abort(
+            new Error(
+              'Unsafe or duplicate specialist delegation detected.'
+            )
+          );
+
           return {
             hookSpecificOutput: {
               hookEventName:
@@ -581,6 +615,12 @@ export class CodeReviewOrchestrator {
             agentName
           )
         ) {
+          abortController.abort(
+            new Error(
+              'Unsafe or duplicate specialist delegation detected.'
+            )
+          );
+
           return {
             hookSpecificOutput: {
               hookEventName:
@@ -648,6 +688,16 @@ export class CodeReviewOrchestrator {
         model: this.model,
         cwd: this.projectRoot,
         maxTurns: this.maxTurns,
+        abortController,
+
+        ...(
+          this.maxBudgetUsd === undefined
+            ? {}
+            : {
+              maxBudgetUsd:
+                this.maxBudgetUsd
+            }
+        ),
 
         /*
          * Required by the course rubric for unattended execution.

@@ -55,6 +55,7 @@ export interface ResolvedCliEnvironment {
   model: string;
   projectRoot: string;
   maxTurns?: number;
+  maxBudgetUsd?: number;
 }
 
 export interface ReportPaths {
@@ -92,6 +93,7 @@ export interface CliDependencies {
       model: string;
       projectRoot: string;
       maxTurns?: number;
+      maxBudgetUsd?: number;
     }
   ): ReviewRunner;
 
@@ -189,6 +191,40 @@ function readOptionalPositiveInteger(
         variableName,
         value:
           rawValue
+      }
+    );
+  }
+
+  return value;
+}
+
+function readOptionalPositiveNumber(
+  environment: NodeJS.ProcessEnv,
+  variableName: string
+): number | undefined {
+  const rawValue =
+    readEnvironmentValue(
+      environment,
+      variableName
+    );
+
+  if (rawValue === undefined) {
+    return undefined;
+  }
+
+  const value =
+    Number(rawValue);
+
+  if (
+    !Number.isFinite(value) ||
+    value <= 0
+  ) {
+    throw new ReviewError(
+      `${variableName} must be a positive finite number.`,
+      ErrorCodes.INVALID_CONFIG,
+      {
+        variableName,
+        value: rawValue
       }
     );
   }
@@ -321,12 +357,24 @@ export function resolveCliEnvironment(
       'REVIEW_MAX_TURNS'
     );
 
-  const optionalReviewSettings =
-    maxTurns === undefined
-      ? {}
-      : {
-        maxTurns
-      };
+  const maxBudgetUsd =
+    readOptionalPositiveNumber(
+      environment,
+      'REVIEW_MAX_BUDGET_USD'
+    );
+
+  const optionalReviewSettings = {
+    ...(
+      maxTurns === undefined
+        ? {}
+        : { maxTurns }
+    ),
+    ...(
+      maxBudgetUsd === undefined
+        ? {}
+        : { maxBudgetUsd }
+    )
+  };
 
   const useBedrock =
     readEnvironmentValue(
@@ -377,9 +425,25 @@ export function resolveCliEnvironment(
       'ANTHROPIC_API_KEY'
     );
 
+  const anthropicBaseUrl =
+    readEnvironmentValue(
+      environment,
+      'ANTHROPIC_BASE_URL'
+    );
+
   if (
     anthropicApiKey !== undefined
   ) {
+    if (anthropicBaseUrl !== undefined) {
+      throw new ReviewError(
+        'ANTHROPIC_BASE_URL must be unset when using direct Anthropic API authentication.',
+        ErrorCodes.INVALID_CONFIG,
+        {
+          variableName: 'ANTHROPIC_BASE_URL'
+        }
+      );
+    }
+
     return {
       authentication:
         'anthropic',
@@ -564,6 +628,16 @@ export async function runCli(
           : {
             maxTurns:
               runtime.maxTurns
+          }
+      ),
+
+      ...(
+        runtime.maxBudgetUsd ===
+          undefined
+          ? {}
+          : {
+            maxBudgetUsd:
+              runtime.maxBudgetUsd
           }
       )
     };

@@ -124,6 +124,47 @@ describe('resolveCliEnvironment', () => {
     });
   });
 
+  it('parses an optional positive REVIEW_MAX_BUDGET_USD', () => {
+    expect(resolveCliEnvironment({
+      ...validEnvironment,
+      REVIEW_MAX_BUDGET_USD: '1.25'
+    })).toMatchObject({
+      authentication: 'anthropic',
+      model: 'claude-sonnet-4-5-20250929',
+      projectRoot: '/tmp/code-review-project',
+      maxBudgetUsd: 1.25
+    });
+  });
+
+  it.each(['0', '-1', 'not-a-number', 'Infinity', 'NaN'])(
+    'rejects invalid REVIEW_MAX_BUDGET_USD value %j',
+    value => {
+      try {
+        resolveCliEnvironment({
+          ...validEnvironment,
+          REVIEW_MAX_BUDGET_USD: value
+        });
+
+        throw new Error('Expected budget validation to fail.');
+      } catch (error) {
+        expect(error).toMatchObject({
+          code: ErrorCodes.INVALID_CONFIG,
+          metadata: {
+            variableName: 'REVIEW_MAX_BUDGET_USD',
+            value
+          }
+        });
+      }
+    }
+  );
+
+  it('rejects ANTHROPIC_BASE_URL for direct Anthropic authentication', () => {
+    expect(() => resolveCliEnvironment({
+      ...validEnvironment,
+      ANTHROPIC_BASE_URL: 'https://gateway.example.test'
+    })).toThrow('ANTHROPIC_BASE_URL must be unset');
+  });
+
   it.each([
     '0',
     '-1',
@@ -244,5 +285,26 @@ describe('runCli', () => {
       'simple-todo-app',
       2
     );
+  });
+
+  it('forwards the cost and turn limits to the orchestrator', async () => {
+    const fixture = createDependencies();
+
+    await expect(runCli(
+      ['airaamane', 'simple-todo-app', '2'],
+      {
+        ...validEnvironment,
+        REVIEW_MAX_TURNS: '80',
+        REVIEW_MAX_BUDGET_USD: '1.25'
+      },
+      fixture.dependencies
+    )).resolves.toBe(0);
+
+    expect(fixture.createOrchestrator).toHaveBeenCalledWith({
+      model: 'claude-sonnet-4-5-20250929',
+      projectRoot: '/tmp/code-review-project',
+      maxTurns: 80,
+      maxBudgetUsd: 1.25
+    });
   });
 });

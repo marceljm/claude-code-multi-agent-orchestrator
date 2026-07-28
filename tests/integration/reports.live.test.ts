@@ -75,7 +75,27 @@ const LIVE =
   '1';
 
 const REPORT_MAX_TURNS =
-  300;
+  80;
+
+const REPORT_MODEL =
+  'claude-haiku-4-5-20251001';
+
+const REPORT_MAX_BUDGET_USD =
+  1.25;
+
+const REPORT_CLI_TIMEOUT_MS =
+  12 * 60 * 1000;
+
+const REPORT_TEST_TIMEOUT_MS =
+  30 * 60 * 1000;
+
+const {
+  ANTHROPIC_BASE_URL:
+    _ignoredAnthropicBaseUrl,
+
+  ...directAnthropicEnvironment
+} =
+  process.env;
 
 const PR1_TARGET = {
   owner: 'airaamane',
@@ -378,7 +398,10 @@ async function runCompiledCli(
             repositoryRoot,
 
           env: {
-            ...process.env,
+            ...directAnthropicEnvironment,
+
+            ANTHROPIC_MODEL:
+              REPORT_MODEL,
 
             PROJECT_ROOT:
               workspaceRoot,
@@ -386,6 +409,11 @@ async function runCompiledCli(
             REVIEW_MAX_TURNS:
               String(
                 REPORT_MAX_TURNS
+              ),
+
+            REVIEW_MAX_BUDGET_USD:
+              String(
+                REPORT_MAX_BUDGET_USD
               ),
 
             RUN_LIVE_INTEGRATION:
@@ -402,7 +430,7 @@ async function runCompiledCli(
             'utf8',
 
           timeout:
-            30 * 60 * 1000,
+            REPORT_CLI_TIMEOUT_MS,
 
           maxBuffer:
             20 * 1024 * 1024
@@ -632,14 +660,13 @@ describe(
       }
     );
 
-    it(
-      'uses an expanded but bounded turn budget',
-      () => {
-        expect(
-          REPORT_MAX_TURNS
-        ).toBe(300);
-      }
-    );
+    it('uses the direct Haiku cost contract', () => {
+      expect(REPORT_MODEL).toBe('claude-haiku-4-5-20251001');
+      expect(REPORT_MAX_TURNS).toBe(80);
+      expect(REPORT_MAX_BUDGET_USD).toBe(1.25);
+      expect(REPORT_CLI_TIMEOUT_MS).toBe(12 * 60 * 1000);
+      expect(REPORT_TEST_TIMEOUT_MS).toBe(30 * 60 * 1000);
+    });
 
     it(
       'selects both live targets by default',
@@ -711,9 +738,7 @@ describe(
       }
     );
 
-    it(
-      'uses the required live execution timeouts',
-      async () => {
+    it('uses direct Anthropic child settings and required timeouts', async () => {
         const source =
           await readFile(
             fileURLToPath(
@@ -722,13 +747,12 @@ describe(
             'utf8'
           );
 
-        expect(source).toContain(
-          'timeout:\n            30 * 60 * 1000'
-        );
-
-        expect(source).toContain(
-          '75 * 60 * 1000'
-        );
+        expect(source).toContain('ANTHROPIC_BASE_URL:\n    _ignoredAnthropicBaseUrl');
+        expect(source).toContain('...directAnthropicEnvironment');
+        expect(source).toContain('REPORT_MODEL');
+        expect(source).toContain('REPORT_MAX_BUDGET_USD');
+        expect(source).toContain('timeout:\n            REPORT_CLI_TIMEOUT_MS');
+        expect(source).toContain('REPORT_TEST_TIMEOUT_MS');
       }
     );
 
@@ -783,20 +807,9 @@ describe.skipIf(!LIVE)(
             'ANTHROPIC_API_KEY'
           );
 
-        const baseUrl =
-          requireEnvironmentVariable(
-            'ANTHROPIC_BASE_URL'
-          );
-
-        const model =
-          requireEnvironmentVariable(
-            'ANTHROPIC_MODEL'
-          );
-
         const sensitiveValues =
           collectSensitiveValues([
-            apiKey,
-            baseUrl
+            apiKey
           ]);
 
         await mkdir(
@@ -1015,9 +1028,15 @@ describe.skipIf(!LIVE)(
             'phase14-summary.json',
             JSON.stringify(
               {
-                model,
+                model:
+                  REPORT_MODEL,
                 maxTurns:
                   REPORT_MAX_TURNS,
+                maxBudgetUsdPerReview:
+                  REPORT_MAX_BUDGET_USD,
+                maximumCombinedBudgetUsd:
+                  REPORT_MAX_BUDGET_USD *
+                  selectedTargets.length,
                 startPr:
                   process.env
                     .PHASE14_START_PR ??
@@ -1070,7 +1089,7 @@ describe.skipIf(!LIVE)(
           throw error;
         }
       },
-      75 * 60 * 1000
+      REPORT_TEST_TIMEOUT_MS
     );
   }
 );

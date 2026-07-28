@@ -213,6 +213,41 @@ describe('CodeReviewOrchestrator', () => {
   });
 
   describe('SDK configuration', () => {
+    it('forwards the maximum USD budget to the Agent SDK', async () => {
+      const { queryFn, mock } = createSuccessfulQueryMock();
+      const orchestrator = createOrchestrator(queryFn, {
+        maxTurns: 80,
+        maxBudgetUsd: 1.25
+      });
+
+      await orchestrator.reviewPullRequest(
+        'airaamane',
+        'simple-todo-app',
+        2
+      );
+
+      const call = mock.mock.calls[0]?.[0] as {
+        options: {
+          maxTurns: number;
+          maxBudgetUsd: number;
+        };
+      };
+
+      expect(call.options.maxTurns).toBe(80);
+      expect(call.options.maxBudgetUsd).toBe(1.25);
+    });
+
+    it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+      'rejects invalid maxBudgetUsd value %s',
+      maxBudgetUsd => {
+        const { queryFn } = createSuccessfulQueryMock();
+
+        expect(() => createOrchestrator(queryFn, {
+          maxBudgetUsd
+        })).toThrow('maxBudgetUsd');
+      }
+    );
+
     it('configures the model, MCP servers, agents, tools, skills, and output schema', async () => {
       const { queryFn, mock } = createSuccessfulQueryMock();
       const orchestrator = createOrchestrator(queryFn);
@@ -337,6 +372,7 @@ describe('CodeReviewOrchestrator', () => {
         const call =
           mock.mock.calls[0]?.[0] as {
             options: {
+              abortController: AbortController;
               hooks: {
                 PreToolUse:
                   Array<{
@@ -352,6 +388,8 @@ describe('CodeReviewOrchestrator', () => {
               };
             };
           };
+
+        expect(call.options.abortController.signal.aborted).toBe(false);
 
         const duplicateGuard =
           call.options
@@ -468,6 +506,8 @@ describe('CodeReviewOrchestrator', () => {
               'deny'
           }
         });
+
+        expect(call.options.abortController.signal.aborted).toBe(true);
 
         for (
           const agentName
