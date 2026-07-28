@@ -14,6 +14,7 @@ jobs:
     timeout-minutes: 10
     env:
       RUN_LIVE_INTEGRATION: "0"
+      RUN_LIVE_CLI_INTEGRATION: "0"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

@@ -53,7 +53,7 @@ async function readPackageJson(): Promise<PackageJson> {
 }
 
 describe('automated offline test pipeline', () => {
-  it('defines the complete, unit, non-live integration, and opt-in live test commands', async () => {
+  it('defines the complete, unit, integration, and separately opt-in live test commands', async () => {
     const {
       scripts
     } = await readPackageJson();
@@ -67,11 +67,15 @@ describe('automated offline test pipeline', () => {
     );
 
     expect(scripts['test:integration']).toBe(
-      'vitest run tests/integration/orchestrator.smoke.test.ts'
+      'vitest run tests/integration'
     );
 
     expect(scripts['test:live']).toBe(
       'RUN_LIVE_INTEGRATION=1 vitest run tests/integration/orchestrator.smoke.test.ts --reporter=verbose'
+    );
+
+    expect(scripts['test:live:cli']).toBe(
+      'npm run build && RUN_LIVE_CLI_INTEGRATION=1 vitest run tests/integration/cli.live.test.ts --reporter=verbose'
     );
   });
 
@@ -113,6 +117,10 @@ describe('automated offline test pipeline', () => {
     );
 
     expect(workflow).toMatch(
+      /RUN_LIVE_CLI_INTEGRATION:\s*["']0["']/
+    );
+
+    expect(workflow).toMatch(
       /npm ci/
     );
 
@@ -121,7 +129,7 @@ describe('automated offline test pipeline', () => {
     );
 
     expect(workflow).not.toMatch(
-      /RUN_LIVE_INTEGRATION\s*=\s*["']?1["']?/
+      /RUN_LIVE_(?:CLI_)?INTEGRATION\s*=\s*["']?1["']?/
     );
 
     expect(workflow).not.toMatch(
