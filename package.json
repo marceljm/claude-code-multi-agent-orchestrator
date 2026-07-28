@@ -14,6 +14,10 @@
     "dev": "tsx src/main.ts",
     "start": "node dist/main.js",
     "test": "vitest run",
+    "test:unit": "vitest run --exclude \"tests/integration/**\"",
+    "test:integration": "vitest run tests/integration/orchestrator.smoke.test.ts",
+    "test:live": "RUN_LIVE_INTEGRATION=1 vitest run tests/integration/orchestrator.smoke.test.ts --reporter=verbose",
+    "test:ci": "npm run build && npm run test:unit && npm run test:integration",
     "test:watch": "vitest",
     "lint": "tsc --noEmit"
   },
