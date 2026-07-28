@@ -1,5 +1,5 @@
 /**
- * Custom error class for review operations
+ * Custom error class for review operations.
  */
 export class ReviewError extends Error {
   constructor(
@@ -9,17 +9,21 @@ export class ReviewError extends Error {
   ) {
     super(message);
     this.name = 'ReviewError';
-    Error.captureStackTrace(this, ReviewError);
+    Error.captureStackTrace(
+      this,
+      ReviewError
+    );
   }
 }
 
 /**
- * Error codes for the review system
+ * Error codes for the review system.
  */
 export const ErrorCodes = {
   // Configuration errors
   MISSING_API_KEY: 'MISSING_API_KEY',
-  MISSING_GITHUB_TOKEN: 'MISSING_GITHUB_TOKEN',
+  MISSING_GITHUB_TOKEN:
+    'MISSING_GITHUB_TOKEN',
   INVALID_CONFIG: 'INVALID_CONFIG',
 
   // GitHub errors
@@ -31,97 +35,230 @@ export const ErrorCodes = {
   // Agent errors
   AGENT_TIMEOUT: 'AGENT_TIMEOUT',
   AGENT_FAILED: 'AGENT_FAILED',
-  STRUCTURED_OUTPUT_FAILED: 'STRUCTURED_OUTPUT_FAILED',
+  STRUCTURED_OUTPUT_FAILED:
+    'STRUCTURED_OUTPUT_FAILED',
 
   // General errors
   RETRY_EXHAUSTED: 'RETRY_EXHAUSTED',
-  VALIDATION_FAILED: 'VALIDATION_FAILED',
+  VALIDATION_FAILED:
+    'VALIDATION_FAILED',
   UNKNOWN_ERROR: 'UNKNOWN_ERROR'
 } as const;
 
-export type ErrorCode = typeof ErrorCodes[keyof typeof ErrorCodes];
+export type ErrorCode =
+  typeof ErrorCodes[
+    keyof typeof ErrorCodes
+  ];
+
+const MAX_JITTER_MS = 100;
+
+function assertNonNegativeInteger(
+  value: number,
+  name: string
+): void {
+  if (
+    !Number.isInteger(value) ||
+    value < 0
+  ) {
+    throw new ReviewError(
+      `${name} must be a non-negative integer.`,
+      ErrorCodes.INVALID_CONFIG,
+      {
+        [name]: value
+      }
+    );
+  }
+}
+
+function assertNonNegativeFiniteNumber(
+  value: number,
+  name: string
+): void {
+  if (
+    !Number.isFinite(value) ||
+    value < 0
+  ) {
+    throw new ReviewError(
+      `${name} must be a non-negative finite number.`,
+      ErrorCodes.INVALID_CONFIG,
+      {
+        [name]: value
+      }
+    );
+  }
+}
+
+function sleep(
+  delayMs: number
+): Promise<void> {
+  return new Promise(resolve => {
+    setTimeout(
+      resolve,
+      delayMs
+    );
+  });
+}
 
 /**
- * Retry utility with exponential backoff
+ * Retry an asynchronous operation with exponential backoff and jitter.
  *
- * This function implements the retry pattern with exponential backoff and jitter.
- *
- * Algorithm:
- * 1. Try to execute the function
- * 2. If it succeeds, return the result
- * 3. If it fails and retries remain:
- *    - Calculate backoff delay: delayMs * 2^(attempt - 1)
- *    - Add jitter (random 0-100ms) to prevent thundering herd
- *    - Wait for the calculated duration
- *    - Retry
- * 4. If all retries exhausted, throw ReviewError with RETRY_EXHAUSTED code
- *
- * @param fn - Async function to retry
- * @param maxRetries - Maximum number of retries (default: 3)
- * @param delayMs - Base delay in milliseconds (default: 1000)
- * @returns The result of the successful function execution
- * @throws ReviewError with RETRY_EXHAUSTED code if all retries fail
+ * maxRetries is the number of retries after the initial attempt. Therefore,
+ * maxRetries=3 allows at most four total attempts.
  */
 export async function withRetry<T>(
   fn: () => Promise<T>,
   maxRetries: number = 3,
   delayMs: number = 1000
 ): Promise<T> {
-  // TODO: Implement retry logic with exponential backoff
-  // Hints:
-  // - Use a for loop from 1 to maxRetries
-  // - Use try/catch to catch errors
-  // - Calculate backoff: delayMs * Math.pow(2, attempt - 1)
-  // - Add jitter: Math.random() * 100
-  // - Use setTimeout wrapped in Promise for delay
-  // - Throw ReviewError with ErrorCodes.RETRY_EXHAUSTED if all retries fail
+  assertNonNegativeInteger(
+    maxRetries,
+    'maxRetries'
+  );
 
-  throw new Error('Not implemented');
+  assertNonNegativeFiniteNumber(
+    delayMs,
+    'delayMs'
+  );
+
+  const totalAttempts =
+    maxRetries + 1;
+
+  let lastError: unknown;
+
+  for (
+    let attemptIndex = 0;
+    attemptIndex < totalAttempts;
+    attemptIndex += 1
+  ) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+
+      const retriesRemain =
+        attemptIndex < maxRetries;
+
+      if (!retriesRemain) {
+        break;
+      }
+
+      const exponentialDelay =
+        delayMs *
+        Math.pow(
+          2,
+          attemptIndex
+        );
+
+      const jitter =
+        Math.floor(
+          Math.random() *
+            (MAX_JITTER_MS + 1)
+        );
+
+      await sleep(
+        exponentialDelay + jitter
+      );
+    }
+  }
+
+  const lastErrorMessage =
+    formatError(lastError);
+
+  const attemptLabel =
+    totalAttempts === 1
+      ? 'attempt'
+      : 'attempts';
+
+  throw new ReviewError(
+    `Operation failed after ${totalAttempts} ${attemptLabel}: ${lastErrorMessage}`,
+    ErrorCodes.RETRY_EXHAUSTED,
+    {
+      attempts: totalAttempts,
+      maxRetries,
+      delayMs,
+      lastError: lastErrorMessage
+    }
+  );
 }
 
 /**
- * Wrap an async function with timeout
+ * Race an asynchronous operation against a timeout.
  *
- * This function races the provided function against a timeout.
- * Whichever completes first wins.
- *
- * @param fn - Async function to wrap
- * @param timeoutMs - Timeout in milliseconds
- * @param errorMessage - Custom error message
- * @returns The result of the function if it completes before timeout
- * @throws ReviewError with AGENT_TIMEOUT code if timeout is reached
+ * The operation's original rejection is propagated unchanged when it fails
+ * before the timeout.
  */
 export async function withTimeout<T>(
   fn: () => Promise<T>,
   timeoutMs: number,
-  errorMessage: string = 'Operation timed out'
+  errorMessage: string =
+    'Operation timed out'
 ): Promise<T> {
-  // TODO: Implement timeout wrapper using Promise.race
-  // Hints:
-  // - Use Promise.race to race fn() against a timeout promise
-  // - The timeout promise should reject after timeoutMs milliseconds
-  // - Throw ReviewError with ErrorCodes.AGENT_TIMEOUT on timeout
-  // - Include timeoutMs in metadata
+  assertNonNegativeFiniteNumber(
+    timeoutMs,
+    'timeoutMs'
+  );
 
-  throw new Error('Not implemented');
+  let timeoutId:
+    ReturnType<typeof setTimeout> |
+    undefined;
+
+  const timeoutPromise =
+    new Promise<never>(
+      (_resolve, reject) => {
+        timeoutId = setTimeout(
+          () => {
+            reject(
+              new ReviewError(
+                errorMessage,
+                ErrorCodes.AGENT_TIMEOUT,
+                {
+                  timeoutMs
+                }
+              )
+            );
+          },
+          timeoutMs
+        );
+      }
+    );
+
+  const operationPromise =
+    Promise.resolve().then(fn);
+
+  try {
+    return await Promise.race([
+      operationPromise,
+      timeoutPromise
+    ]);
+  } finally {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
+  }
 }
 
 /**
- * Check if an error is a ReviewError
+ * Check if an error is a ReviewError.
  */
-export function isReviewError(error: unknown): error is ReviewError {
+export function isReviewError(
+  error: unknown
+): error is ReviewError {
   return error instanceof ReviewError;
 }
 
 /**
- * Format error for logging/display
+ * Format an error for logging or display.
  */
-export function formatError(error: unknown): string {
+export function formatError(
+  error: unknown
+): string {
   if (isReviewError(error)) {
     return `[${error.code}] ${error.message}`;
   }
+
   if (error instanceof Error) {
     return error.message;
   }
+
   return String(error);
 }
