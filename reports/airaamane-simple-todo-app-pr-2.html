@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Code Review Report</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 24px;
+      background: #f8f9fa;
+      color: #212529;
+    }
+    h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 12px; }
+    .summary {
+      background: white;
+      padding: 24px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      margin: 24px 0;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 16px;
+    }
+    .metric { text-align: center; }
+    .metric-value { font-size: 2em; font-weight: bold; color: #3498db; }
+    .metric-label { color: #6c757d; font-size: 0.9em; }
+    ul { list-style: none; padding: 0; }
+    li { padding: 12px; margin: 8px 0; border-radius: 4px; background: white; }
+    .rec-critical { border-left: 4px solid #e74c3c; }
+    .rec-high { border-left: 4px solid #f39c12; }
+    .rec-medium { border-left: 4px solid #3498db; }
+    .rec-low { border-left: 4px solid #27ae60; }
+    .priority { font-weight: bold; margin-right: 8px; }
+    .rec-critical .priority { color: #e74c3c; }
+    .rec-high .priority { color: #f39c12; }
+    .rec-medium .priority { color: #3498db; }
+    .rec-low .priority { color: #27ae60; }
+    footer { text-align: center; color: #6c757d; margin-top: 32px; font-size: 0.9em; }
+  </style>
+</head>
+<body>
+  <h1>🔍 Code Review Report</h1>
+  
+  <div class="summary">
+    <div class="metric">
+      <div class="metric-value">95</div>
+      <div class="metric-label">Overall Score</div>
+    </div>
+    <div class="metric">
+      <div class="metric-value">8</div>
+      <div class="metric-label">Files Reviewed</div>
+    </div>
+    <div class="metric">
+      <div class="metric-value">0</div>
+      <div class="metric-label">Critical Issues</div>
+    </div>
+    <div class="metric">
+      <div class="metric-value">7</div>
+      <div class="metric-label">Tests Needed</div>
+    </div>
+    <div class="metric">
+      <div class="metric-value">4</div>
+      <div class="metric-label">Refactorings</div>
+    </div>
+  </div>
+
+  <h2>🎯 Top Recommendations</h2>
+  <ul>
+      <li class="rec-critical">
+        <span class="priority">[CRITICAL]</span>
+        <strong>Test Coverage</strong>: Core CRUD operations (createTodo, getAllTodos, getTodoById, updateTodoStatus, deleteTodo) lack test coverage despite being the primary business logic. Only validation and sanitization utilities are tested. This represents a significant gap in test coverage (estimated 25% overall for src/todo.ts).
+        <br><small>Files: src/todo.ts</small>
+      </li>
+    
+      <li class="rec-high">
+        <span class="priority">[HIGH]</span>
+        <strong>Test Coverage</strong>: Missing edge-case tests for sanitizeInput (ampersand escaping), validateTodoInput (null/undefined handling), and createTodo (whitespace-only titles). These edge cases could lead to security vulnerabilities (XSS) or unexpected behavior.
+        <br><small>Files: src/todo.ts</small>
+      </li>
+    
+      <li class="rec-high">
+        <span class="priority">[HIGH]</span>
+        <strong>Performance</strong>: getAllTodos() retrieves all todos without pagination, which will cause performance issues as data grows. Add LIMIT and OFFSET parameters to allow paginated retrieval.
+        <br><small>Files: src/todo.ts</small>
+      </li>
+    
+      <li class="rec-medium">
+        <span class="priority">[MEDIUM]</span>
+        <strong>Database Implementation</strong>: The MockDatabase.query() method always returns empty arrays and is untested. This mock implementation is non-functional and won't support realistic integration testing. Consider implementing proper mock behavior or replacing with a real database.
+        <br><small>Files: src/database.ts</small>
+      </li>
+    
+      <li class="rec-medium">
+        <span class="priority">[MEDIUM]</span>
+        <strong>Code Quality</strong>: Refactoring opportunities identified: consolidate sanitizeInput's multiple replace operations into a single pass, simplify validateTodoInput logic with intermediate variables, and extract todo object construction into a separate function for better testability.
+        <br><small>Files: src/todo.ts</small>
+      </li>
+    </ul>
+
+  <h2>📁 Reviewed Files</h2>
+  <ul>
+    <li><code>.gitignore</code></li>
+    <li><code>README.md</code></li>
+    <li><code>jest.config.js</code></li>
+    <li><code>package.json</code></li>
+    <li><code>src/database.ts</code></li>
+    <li><code>src/todo.test.ts</code></li>
+    <li><code>src/todo.ts</code></li>
+    <li><code>tsconfig.json</code></li>
+  </ul>
+
+  <footer>
+    Generated at 2026-07-28T00:00:00Z • Duration: 60ms
+  </footer>
+</body>
+</html>
