@@ -2,21 +2,40 @@
 
 This directory contains reusable domain guidance loaded by the Claude Agent SDK.
 
-## Installed skill
+## Installed skills
 
 ### `javascript-best-practices`
 
-The code-quality analyzer invokes this skill before analyzing a pull request.
-It covers modern JavaScript, async usage, pitfalls, performance, security, and
-actionable severity-based findings.
+Reviews JavaScript files for modern syntax, async usage, pitfalls, performance,
+security, and actionable best practices.
 
 The skill is stored at `.claude/skills/javascript-best-practices/SKILL.md`.
 
+### `typescript-patterns`
+
+Reviews TypeScript files for type safety, narrowing, runtime validation, API
+design, generics, async correctness, and maintainable patterns.
+
+Stored at `.claude/skills/typescript-patterns/SKILL.md`.
+
+### `security-analysis`
+
+Reviews every assigned changed file for OWASP-aligned security risks, trust
+boundaries, injection, authorization flaws, secret exposure, and availability.
+
+Stored at `.claude/skills/security-analysis/SKILL.md`.
+
 ## Runtime use
 
-The code-quality analyzer has access to the `Skill` tool. Its prompt requires
-`javascript-best-practices` to be the first tool invocation, ensuring that the
-skill guidance is loaded before the analyzer returns its structured result.
+The code-quality analyzer is the only specialist with access to the `Skill`
+tool. Security guidance is required for every review. TypeScript guidance is
+required for `.ts`, `.tsx`, `.mts`, and `.cts` files. JavaScript guidance is
+required for `.js`, `.jsx`, `.mjs`, and `.cjs` files. Each applicable skill is
+invoked exactly once before analysis begins.
+
+Security guidance is required for every review.
+TypeScript guidance is required when TypeScript files are present.
+JavaScript guidance is required when JavaScript files are present.
 
 The test-coverage analyzer and refactoring suggester do not use skills. Their
 tool sets remain intentionally smaller.
