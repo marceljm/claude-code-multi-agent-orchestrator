@@ -23,7 +23,10 @@ import {
 
 import {
   ErrorCodes,
-  ReviewError
+  isReviewError,
+  ReviewError,
+  withRetry,
+  withTimeout
 } from './utils/error-handler.js';
 
 import {
@@ -48,6 +51,9 @@ type QueryFunction = typeof query;
 
 const DEFAULT_MAX_TURNS = 50;
 const DEFAULT_ESTIMATED_TOKENS_PER_REVIEW = 1000;
+const DEFAULT_REVIEW_TIMEOUT_MS = 300000;
+const DEFAULT_MAX_PRE_DELEGATION_RETRIES = 2;
+const DEFAULT_RETRY_DELAY_MS = 1000;
 
 const ORCHESTRATOR_TOOLS = [
   'Task'
@@ -107,6 +113,9 @@ export interface OrchestratorOptions {
   rateLimiter?: RateLimiter;
   /** Estimated token reservation charged to the limiter for one review. */
   estimatedTokensPerReview?: number;
+  reviewTimeoutMs?: number;
+  maxPreDelegationRetries?: number;
+  retryDelayMs?: number;
   onMessage?: (
     message: unknown
   ) => void | Promise<void>;
@@ -117,6 +126,17 @@ interface PullRequestTarget {
   repo: string;
   number: number;
 }
+
+interface ReviewAttemptState {
+  abortController: AbortController;
+  specialistDelegationStarted: boolean;
+  safetyViolationDetected: boolean;
+  sawStreamMessage: boolean;
+}
+
+type ReviewAttemptOutcome =
+  | { status: 'success'; report: ReviewReport }
+  | { status: 'terminal-failure'; error: unknown };
 
 function isRecord(
   value: unknown
@@ -375,6 +395,9 @@ export class CodeReviewOrchestrator {
   private readonly queryFn: QueryFunction;
   private readonly rateLimiter: RateLimiter;
   private readonly estimatedTokensPerReview: number;
+  private readonly reviewTimeoutMs: number;
+  private readonly maxPreDelegationRetries: number;
+  private readonly retryDelayMs: number;
   private readonly onMessage?: (
     message: unknown
   ) => void | Promise<void>;
@@ -426,12 +449,66 @@ export class CodeReviewOrchestrator {
 
     this.queryFn = options.queryFn ?? query;
     this.rateLimiter = options.rateLimiter ?? globalRateLimiter;
-    this.estimatedTokensPerReview = options.estimatedTokensPerReview ?? DEFAULT_ESTIMATED_TOKENS_PER_REVIEW;
-    if (!Number.isInteger(this.estimatedTokensPerReview) || this.estimatedTokensPerReview <= 0) {
+    this.estimatedTokensPerReview =
+      options.estimatedTokensPerReview ??
+      DEFAULT_ESTIMATED_TOKENS_PER_REVIEW;
+    if (
+      !Number.isInteger(this.estimatedTokensPerReview) ||
+      this.estimatedTokensPerReview <= 0
+    ) {
       throw new ReviewError(
         'estimatedTokensPerReview must be a positive integer.',
         ErrorCodes.INVALID_CONFIG,
-        { estimatedTokensPerReview: this.estimatedTokensPerReview }
+        {
+          estimatedTokensPerReview:
+            this.estimatedTokensPerReview
+        }
+      );
+    }
+    this.reviewTimeoutMs =
+      options.reviewTimeoutMs ??
+      DEFAULT_REVIEW_TIMEOUT_MS;
+    if (
+      !Number.isInteger(this.reviewTimeoutMs) ||
+      this.reviewTimeoutMs <= 0
+    ) {
+      throw new ReviewError(
+        'reviewTimeoutMs must be a positive integer.',
+        ErrorCodes.INVALID_CONFIG,
+        {
+          reviewTimeoutMs: this.reviewTimeoutMs
+        }
+      );
+    }
+    this.maxPreDelegationRetries =
+      options.maxPreDelegationRetries ??
+      DEFAULT_MAX_PRE_DELEGATION_RETRIES;
+    if (
+      !Number.isInteger(this.maxPreDelegationRetries) ||
+      this.maxPreDelegationRetries < 0
+    ) {
+      throw new ReviewError(
+        'maxPreDelegationRetries must be a non-negative integer.',
+        ErrorCodes.INVALID_CONFIG,
+        {
+          maxPreDelegationRetries:
+            this.maxPreDelegationRetries
+        }
+      );
+    }
+    this.retryDelayMs =
+      options.retryDelayMs ??
+      DEFAULT_RETRY_DELAY_MS;
+    if (
+      !Number.isFinite(this.retryDelayMs) ||
+      this.retryDelayMs < 0
+    ) {
+      throw new ReviewError(
+        'retryDelayMs must be a non-negative finite number.',
+        ErrorCodes.INVALID_CONFIG,
+        {
+          retryDelayMs: this.retryDelayMs
+        }
       );
     }
     this.onMessage = options.onMessage;
@@ -440,7 +517,12 @@ export class CodeReviewOrchestrator {
   /**
    * Reviews one pull request using the three required subagents.
    */
-  private async executeReview(target: PullRequestTarget): Promise<ReviewReport> {
+  private async executeReview(
+    target: PullRequestTarget,
+    attemptState: ReviewAttemptState
+  ): Promise<ReviewReport> {
+    const abortController =
+      attemptState.abortController;
     const prompt = buildOrchestratorPrompt(
       target.owner,
       target.repo,
@@ -451,9 +533,6 @@ export class CodeReviewOrchestrator {
 
     const delegatedAgents =
       new Set<string>();
-
-    const abortController =
-      new AbortController();
 
     const denyWriteCapableTools:
       HookCallback = async input => {
@@ -534,6 +613,7 @@ export class CodeReviewOrchestrator {
             agentName
           )
         ) {
+          attemptState.safetyViolationDetected = true;
           abortController.abort(
             new Error(
               'Unsafe or duplicate specialist delegation detected.'
@@ -559,6 +639,7 @@ export class CodeReviewOrchestrator {
             agentName
           )
         ) {
+          attemptState.safetyViolationDetected = true;
           abortController.abort(
             new Error(
               'Unsafe or duplicate specialist delegation detected.'
@@ -579,6 +660,7 @@ export class CodeReviewOrchestrator {
           };
         }
 
+        attemptState.specialistDelegationStarted = true;
         delegatedAgents.add(
           agentName
         );
@@ -667,6 +749,7 @@ export class CodeReviewOrchestrator {
     let structuredOutput: unknown;
 
     for await (const message of messageStream) {
+      attemptState.sawStreamMessage = true;
       if (this.onMessage) {
         await this.onMessage(message);
       }
@@ -724,6 +807,70 @@ export class CodeReviewOrchestrator {
     return parsed.data;
   }
 
+  private async executeReviewAttempt(
+    target: PullRequestTarget
+  ): Promise<ReviewAttemptOutcome> {
+    const attemptState: ReviewAttemptState = {
+      abortController:
+        new AbortController(),
+      specialistDelegationStarted:
+        false,
+      safetyViolationDetected:
+        false,
+      sawStreamMessage:
+        false
+    };
+    try {
+      const report = await withTimeout(
+        () => this.executeReview(target, attemptState),
+        this.reviewTimeoutMs,
+        `Pull-request review timed out after ${this.reviewTimeoutMs}ms.`
+      );
+      return {
+        status: 'success',
+        report
+      };
+    } catch (error) {
+      if (
+        isReviewError(error) &&
+        error.code === ErrorCodes.AGENT_TIMEOUT &&
+        !attemptState.abortController.signal.aborted
+      ) {
+        attemptState.abortController.abort(
+          error
+        );
+      }
+      const mayRetry =
+        !attemptState.specialistDelegationStarted &&
+        !attemptState.safetyViolationDetected &&
+        !attemptState.sawStreamMessage;
+      if (mayRetry) {
+        throw error;
+      }
+      return {
+        status: 'terminal-failure',
+        error
+      };
+    }
+  }
+
+  private async executeReviewWithResilience(
+    target: PullRequestTarget
+  ): Promise<ReviewReport> {
+    const outcome =
+      this.maxPreDelegationRetries === 0
+        ? await this.executeReviewAttempt(target)
+        : await withRetry(
+          () => this.executeReviewAttempt(target),
+          this.maxPreDelegationRetries,
+          this.retryDelayMs
+        );
+    if (outcome.status === 'terminal-failure') {
+      throw outcome.error;
+    }
+    return outcome.report;
+  }
+
   async reviewPullRequest(owner: string, repo: string, prNumber: number): Promise<ReviewReport> {
     const normalizedOwner = owner.trim();
     const normalizedRepo = repo.trim();
@@ -733,6 +880,6 @@ export class CodeReviewOrchestrator {
       throw new Error('Pull request number must be a positive integer.');
     }
     const target: PullRequestTarget = { owner: normalizedOwner, repo: normalizedRepo, number: prNumber };
-    return withRateLimit(this.rateLimiter, () => this.executeReview(target), this.estimatedTokensPerReview);
+    return withRateLimit(this.rateLimiter, () => this.executeReviewWithResilience(target), this.estimatedTokensPerReview);
   }
 }

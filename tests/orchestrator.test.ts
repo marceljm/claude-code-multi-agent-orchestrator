@@ -1,4 +1,5 @@
 import {
+  afterEach,
   describe,
   expect,
   it,
@@ -33,8 +34,87 @@ import type {
 
 import { RateLimiter } from '../src/utils/rate-limiter.js';
 
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
 const MODEL = 'claude-sonnet-4-5-20250929';
 const PROJECT_ROOT = '/tmp/code-review-project';
+
+type TestPreToolUseHook = (
+  input: unknown,
+  toolUseId: string,
+  context: {
+    signal: AbortSignal;
+  }
+) => Promise<Record<string, unknown>>;
+
+interface ResilientQueryInput {
+  options: {
+    abortController: AbortController;
+    hooks: {
+      PreToolUse: Array<{
+        hooks: TestPreToolUseHook[];
+      }>;
+    };
+  };
+}
+
+async function invokeSpecialistGuard(
+  input: ResilientQueryInput,
+  agentName: string,
+  toolUseId: string
+): Promise<Record<string, unknown>> {
+  const guard = input.options.hooks.PreToolUse[0]?.hooks[1];
+  expect(guard).toBeDefined();
+  return guard!(
+    {
+      hook_event_name: 'PreToolUse',
+      session_id: 'resilience-test',
+      cwd: PROJECT_ROOT,
+      tool_name: 'Task',
+      tool_input: {
+        subagent_type: agentName
+      }
+    },
+    toolUseId,
+    {
+      signal: new AbortController().signal
+    }
+  );
+}
+
+function waitForAbort(
+  signal: AbortSignal
+): Promise<never> {
+  return new Promise(
+    (_resolve, reject) => {
+      const rejectWithReason =
+        () => {
+          reject(
+            signal.reason ??
+              new Error(
+                'The SDK attempt was aborted.'
+              )
+          );
+        };
+
+      if (signal.aborted) {
+        rejectWithReason();
+        return;
+      }
+
+      signal.addEventListener(
+        'abort',
+        rejectWithReason,
+        {
+          once: true
+        }
+      );
+    }
+  );
+}
 
 function createValidReport(): ReviewReport {
   return {
@@ -220,6 +300,51 @@ describe('CodeReviewOrchestrator', () => {
         expect(() => createOrchestrator(queryFn, { estimatedTokensPerReview })).toThrow('estimatedTokensPerReview');
       }
     );
+
+    it.each([
+      0,
+      -1,
+      1.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY
+    ])(
+      'rejects invalid reviewTimeoutMs value %s',
+      reviewTimeoutMs => {
+      const { queryFn } = createSuccessfulQueryMock();
+        expect(
+          () => createOrchestrator(queryFn, { reviewTimeoutMs })
+        ).toThrow('reviewTimeoutMs');
+      }
+    );
+
+    it.each([
+      -1,
+      1.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY
+    ])(
+      'rejects invalid maxPreDelegationRetries value %s',
+      maxPreDelegationRetries => {
+      const { queryFn } = createSuccessfulQueryMock();
+        expect(
+          () => createOrchestrator(queryFn, { maxPreDelegationRetries })
+        ).toThrow('maxPreDelegationRetries');
+      }
+    );
+
+    it.each([
+      -1,
+      Number.NaN,
+      Number.POSITIVE_INFINITY
+    ])(
+      'rejects invalid retryDelayMs value %s',
+      retryDelayMs => {
+      const { queryFn } = createSuccessfulQueryMock();
+        expect(
+          () => createOrchestrator(queryFn, { retryDelayMs })
+        ).toThrow('retryDelayMs');
+      }
+    );
   });
 
   describe('rate-limited review execution', () => {
@@ -256,7 +381,14 @@ describe('CodeReviewOrchestrator', () => {
       const failure = new Error('SDK stream failed.');
       const queryMock = vi.fn(() => ({ async *[Symbol.asyncIterator]() { throw failure; } }));
       const rateLimiter = new RateLimiter({ maxRequestsPerMinute: 10, maxTokensPerMinute: 1000, maxConcurrent: 1 });
-      const orchestrator = createOrchestrator(queryMock as unknown as NonNullable<OrchestratorOptions['queryFn']>, { rateLimiter, estimatedTokensPerReview: 75 });
+      const orchestrator = createOrchestrator(
+        queryMock as unknown as NonNullable<OrchestratorOptions['queryFn']>,
+        {
+          rateLimiter,
+          estimatedTokensPerReview: 75,
+          maxPreDelegationRetries: 0
+        }
+      );
       await expect(orchestrator.reviewPullRequest('airaamane', 'simple-todo-app', 2)).rejects.toBe(failure);
       expect(rateLimiter.getStatus()).toMatchObject({ activeRequests: 0, requestsInWindow: 1, tokensInWindow: 75 });
     });
@@ -268,6 +400,274 @@ describe('CodeReviewOrchestrator', () => {
       await expect(orchestrator.reviewPullRequest('airaamane', 'simple-todo-app', 2)).rejects.toMatchObject({ name: 'ReviewError', code: 'RATE_LIMITED' });
       expect(mock).not.toHaveBeenCalled();
       expect(rateLimiter.getStatus()).toMatchObject({ activeRequests: 0, requestsInWindow: 0, tokensInWindow: 0 });
+    });
+  });
+
+  describe('retry and timeout safety', () => {
+    it('uses two retries for three total startup attempts', async () => {
+      vi.useFakeTimers();
+      vi.spyOn(Math, 'random').mockReturnValue(0);
+      const rateLimiter = new RateLimiter({
+        maxRequestsPerMinute: 10,
+        maxTokensPerMinute: 5000,
+        maxConcurrent: 1
+      });
+      const acquireSpy = vi.spyOn(rateLimiter, 'acquire');
+      const releaseSpy = vi.spyOn(rateLimiter, 'release');
+      let attempts = 0;
+      const queryMock = vi.fn(() => {
+        attempts += 1;
+        if (attempts < 3) throw new Error(`startup ${attempts}`);
+        return createAsyncIterable([
+          {
+            type: 'result',
+            subtype: 'success',
+            structured_output: createValidReport()
+          }
+        ]);
+      });
+      const result = createOrchestrator(
+        queryMock as unknown as NonNullable<OrchestratorOptions['queryFn']>,
+        {
+          rateLimiter,
+          retryDelayMs: 1,
+          reviewTimeoutMs: 1000
+        }
+      ).reviewPullRequest('airaamane', 'simple-todo-app', 2);
+      void result.catch(() => undefined);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(rateLimiter.getStatus().activeRequests).toBe(1);
+      await vi.runAllTimersAsync();
+      await expect(result).resolves.toEqual(createValidReport());
+      expect(queryMock).toHaveBeenCalledTimes(3);
+      expect(acquireSpy).toHaveBeenCalledTimes(1);
+      expect(releaseSpy).toHaveBeenCalledTimes(1);
+      expect(rateLimiter.getStatus()).toMatchObject({
+        activeRequests: 0,
+        requestsInWindow: 1,
+        tokensInWindow: 1000
+      });
+    });
+
+    it('returns RETRY_EXHAUSTED after exactly three startup attempts', async () => {
+      vi.useFakeTimers();
+      vi.spyOn(Math, 'random').mockReturnValue(0);
+      const queryMock = vi.fn(() => { throw new Error('startup'); });
+      const result = createOrchestrator(
+        queryMock as unknown as NonNullable<OrchestratorOptions['queryFn']>,
+        { retryDelayMs: 1 }
+      ).reviewPullRequest(
+        'airaamane',
+        'simple-todo-app',
+        2
+      );
+      void result.catch(() => undefined);
+      await vi.runAllTimersAsync();
+      await expect(result).rejects.toMatchObject({
+        code: 'RETRY_EXHAUSTED',
+        metadata: {
+          attempts: 3,
+          maxRetries: 2
+        }
+      });
+      expect(queryMock).toHaveBeenCalledTimes(3);
+    });
+
+    it('aborts and retries a pre-delegation timeout', async () => {
+      vi.useFakeTimers();
+      vi.spyOn(Math, 'random').mockReturnValue(0);
+      const signals: AbortSignal[] = [];
+      const queryMock = vi.fn((raw: unknown) => {
+        const input = raw as ResilientQueryInput;
+        const signal = input.options.abortController.signal;
+        signals.push(signal);
+        return {
+          async *[Symbol.asyncIterator]() {
+            await waitForAbort(signal);
+          }
+        };
+      });
+      const result = createOrchestrator(
+        queryMock as unknown as NonNullable<OrchestratorOptions['queryFn']>,
+        {
+          maxPreDelegationRetries: 1,
+          retryDelayMs: 1,
+          reviewTimeoutMs: 5
+        }
+      ).reviewPullRequest('airaamane', 'simple-todo-app', 2);
+      void result.catch(() => undefined);
+      await vi.runAllTimersAsync();
+      await expect(result).rejects.toMatchObject({ code: 'RETRY_EXHAUSTED' });
+      expect(queryMock).toHaveBeenCalledTimes(2);
+      expect(signals.every(signal => signal.aborted)).toBe(true);
+    });
+
+    it('does not retry after a stream message', async () => {
+      const failure = new Error('after output');
+      const queryMock = vi.fn(() => ({
+        async *[Symbol.asyncIterator]() {
+          yield { type: 'assistant' };
+          throw failure;
+        }
+      }));
+      await expect(
+        createOrchestrator(
+          queryMock as unknown as NonNullable<OrchestratorOptions['queryFn']>
+        ).reviewPullRequest(
+          'airaamane',
+          'simple-todo-app',
+          2
+        )
+      ).rejects.toBe(failure);
+      expect(queryMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not retry after specialist delegation', async () => {
+      const failure = new Error('after delegation');
+      const queryMock = vi.fn((raw: unknown) => {
+        const input = raw as ResilientQueryInput;
+        return {
+          async *[Symbol.asyncIterator]() {
+            await invokeSpecialistGuard(
+              input,
+              'code-quality-analyzer',
+              'id'
+            );
+            throw failure;
+          }
+        };
+      });
+      await expect(
+        createOrchestrator(
+          queryMock as unknown as NonNullable<OrchestratorOptions['queryFn']>,
+          { retryDelayMs: 0 }
+        ).reviewPullRequest('airaamane', 'simple-todo-app', 2)
+      ).rejects.toBe(failure);
+      expect(queryMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('aborts but does not retry a timeout after specialist delegation', async () => {
+      vi.useFakeTimers();
+      const rateLimiter = new RateLimiter({
+        maxRequestsPerMinute: 10,
+        maxTokensPerMinute: 5000,
+        maxConcurrent: 1
+      });
+      let attemptSignal: AbortSignal | undefined;
+      const queryMock = vi.fn((raw: unknown) => {
+        const input = raw as ResilientQueryInput;
+        attemptSignal = input.options.abortController.signal;
+        return {
+          async *[Symbol.asyncIterator]() {
+            await invokeSpecialistGuard(
+              input,
+              'code-quality-analyzer',
+              'timeout'
+            );
+            await waitForAbort(
+              input.options.abortController.signal
+            );
+          }
+        };
+      });
+      const result = createOrchestrator(
+        queryMock as unknown as NonNullable<OrchestratorOptions['queryFn']>,
+        {
+          rateLimiter,
+          reviewTimeoutMs: 25,
+          maxPreDelegationRetries: 2,
+          retryDelayMs: 0
+        }
+      ).reviewPullRequest('airaamane', 'simple-todo-app', 2);
+      void result.catch(() => undefined);
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(25);
+      await expect(result).rejects.toMatchObject({
+        name: 'ReviewError',
+        code: 'AGENT_TIMEOUT',
+        metadata: { timeoutMs: 25 }
+      });
+      expect(queryMock).toHaveBeenCalledTimes(1);
+      expect(attemptSignal?.aborted).toBe(true);
+      expect(rateLimiter.getStatus().activeRequests).toBe(0);
+    });
+
+    it('does not retry an unknown-specialist safety violation', async () => {
+      vi.useFakeTimers();
+      const queryMock = vi.fn((raw: unknown) => {
+        const input = raw as ResilientQueryInput;
+        const signal = input.options.abortController.signal;
+        return {
+          async *[Symbol.asyncIterator]() {
+            const response = await invokeSpecialistGuard(
+              input,
+              'unconfigured-analyzer',
+              'unknown'
+            );
+            expect(response).toMatchObject({
+              hookSpecificOutput: {
+                permissionDecision: 'deny'
+              }
+            });
+            expect(signal.aborted).toBe(true);
+            await waitForAbort(signal);
+          }
+        };
+      });
+      const result = createOrchestrator(
+        queryMock as unknown as NonNullable<OrchestratorOptions['queryFn']>,
+        { retryDelayMs: 0 }
+      ).reviewPullRequest('airaamane', 'simple-todo-app', 2);
+      void result.catch(() => undefined);
+      await expect(result).rejects.toThrow(
+        'Unsafe or duplicate specialist delegation detected.'
+      );
+      expect(queryMock).toHaveBeenCalledTimes(1);
+      await vi.runOnlyPendingTimersAsync();
+      expect(queryMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not retry a duplicate-specialist safety violation', async () => {
+      vi.useFakeTimers();
+      const queryMock = vi.fn((raw: unknown) => {
+        const input = raw as ResilientQueryInput;
+        const signal = input.options.abortController.signal;
+        return {
+          async *[Symbol.asyncIterator]() {
+            const first = await invokeSpecialistGuard(
+              input,
+              'code-quality-analyzer',
+              'first'
+            );
+            const response = await invokeSpecialistGuard(
+              input,
+              'code-quality-analyzer',
+              'duplicate'
+            );
+            expect(first).toEqual({});
+            expect(response).toMatchObject({
+              hookSpecificOutput: {
+                permissionDecision: 'deny'
+              }
+            });
+            expect(signal.aborted).toBe(true);
+            await waitForAbort(signal);
+          }
+        };
+      });
+      const result = createOrchestrator(
+        queryMock as unknown as NonNullable<OrchestratorOptions['queryFn']>,
+        { retryDelayMs: 0 }
+      ).reviewPullRequest('airaamane', 'simple-todo-app', 2);
+      void result.catch(() => undefined);
+      await expect(result).rejects.toThrow(
+        'Unsafe or duplicate specialist delegation detected.'
+      );
+      expect(queryMock).toHaveBeenCalledTimes(1);
+      await vi.runOnlyPendingTimersAsync();
+      expect(queryMock).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -822,7 +1222,7 @@ describe('CodeReviewOrchestrator', () => {
     });
 
     it('rejects a success result without structured output', async () => {
-      const { queryFn } = createQueryMock([
+      const { queryFn, mock } = createQueryMock([
         {
           type: 'result',
           subtype: 'success'
@@ -841,10 +1241,11 @@ describe('CodeReviewOrchestrator', () => {
       ).rejects.toThrow(
         'success without structured output'
       );
+      expect(mock).toHaveBeenCalledTimes(1);
     });
 
     it('rejects a stream that ends without a result message', async () => {
-      const { queryFn } = createQueryMock([
+      const { queryFn, mock } = createQueryMock([
         {
           type: 'assistant',
           message: {
@@ -865,10 +1266,11 @@ describe('CodeReviewOrchestrator', () => {
       ).rejects.toThrow(
         'ended without a result message'
       );
+      expect(mock).toHaveBeenCalledTimes(1);
     });
 
     it('rejects an SDK error result', async () => {
-      const { queryFn } = createQueryMock([
+      const { queryFn, mock } = createQueryMock([
         {
           type: 'result',
           subtype: 'error_max_turns'
@@ -885,6 +1287,7 @@ describe('CodeReviewOrchestrator', () => {
           2
         )
       ).rejects.toThrow('error_max_turns');
+      expect(mock).toHaveBeenCalledTimes(1);
     });
 
     it('rejects structured output that fails ReviewReportSchema', async () => {
@@ -893,7 +1296,7 @@ describe('CodeReviewOrchestrator', () => {
         metadata: undefined
       };
 
-      const { queryFn } = createQueryMock([
+      const { queryFn, mock } = createQueryMock([
         {
           type: 'result',
           subtype: 'success',
@@ -913,6 +1316,7 @@ describe('CodeReviewOrchestrator', () => {
       ).rejects.toThrow(
         'ReviewReportSchema validation failed'
       );
+      expect(mock).toHaveBeenCalledTimes(1);
     });
 
     it('formats nested Zod 4 issue paths', async () => {

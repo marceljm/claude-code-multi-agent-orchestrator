@@ -116,6 +116,25 @@ CLI execution uses the shared `globalRateLimiter`. Programmatic callers may
 inject an isolated `RateLimiter` and a different positive
 `estimatedTokensPerReview` value through `OrchestratorOptions`.
 
+## Retry and timeout safety
+
+Each Agent SDK execution attempt has a five-minute timeout. A timed-out attempt
+is aborted through its SDK `AbortController`.
+
+A transient startup failure may be retried only when the SDK has not emitted a
+stream message and no specialist delegation has begun. The default is two
+retries after the initial attempt, for at most three total attempts, using
+exponential backoff with a one-second initial delay.
+
+Once any SDK stream message is observed, any specialist begins, or a delegation
+safety violation occurs, the complete review fails without retry. This prevents
+a retry from invoking a specialist more than once.
+
+The process-wide rate-limit reservation remains held across all safe retry
+attempts and backoff delays for the complete review. Programmatic callers may
+override `reviewTimeoutMs`, `maxPreDelegationRetries`, and `retryDelayMs` through
+`OrchestratorOptions`.
+
 ## MCP servers
 
 - GitHub MCP for pull-request and repository operations.
