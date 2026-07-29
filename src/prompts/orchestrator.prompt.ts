@@ -73,25 +73,22 @@ subagent analyses.
 When no supported JavaScript or TypeScript file changed, do not invent an
 ESLint invocation.
 
-### 3. Load the required JavaScript best-practices Skill
+### Skill ownership
 
-Invoke the javascript-best-practices skill through the Skill tool.
+Do not invoke the Skill tool in the orchestrator.
 
-The Skill invocation is mandatory.
+The code-quality specialist owns all Skill initialization. It receives the
+complete changed-file list and selects security-analysis plus the applicable
+TypeScript and JavaScript guidance.
 
-Complete the Skill invocation before starting any Task or Agent invocation.
+The test-coverage and refactoring specialists do not use Skills.
 
-Do not merely mention the skill.
-Do not summarize what you think the skill probably contains.
-Do not delegate Skill loading to a subagent.
-Do not start any specialized subagent in the same tool-use batch as the Skill
-invocation.
-
-Wait for the Skill tool result and apply its loaded instructions to the review.
-
-### 4. Build one complete pull-request evidence bundle
+### 3. Build one complete pull-request evidence bundle
 
 Construct one compact evidence bundle for the complete pull request.
+
+Pass every changed-file path and extension to the code-quality specialist so it
+can select the applicable language Skills.
 
 List every changed file exactly once and preserve the changed-file order returned
 by GitHub MCP.
@@ -105,7 +102,6 @@ For every changed file, include:
 - relevant existing test context
 
 Include the pull-request metadata, ESLint findings or limitation diagnostic, and
-the loaded javascript-best-practices guidance where relevant.
 
 Do not repeatedly fetch or duplicate the same evidence for separate files after
 the complete bundle has been assembled.

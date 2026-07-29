@@ -4,7 +4,6 @@ import {
 
 import type {
   HookCallback,
-  PostToolUseHookInput,
   PreToolUseHookInput
 } from '@anthropic-ai/claude-agent-sdk';
 
@@ -41,12 +40,10 @@ type QueryFunction = typeof query;
 const DEFAULT_MAX_TURNS = 50;
 
 const ORCHESTRATOR_TOOLS = [
-  'Skill',
   'Task'
 ];
 
 const ALLOWED_TOOLS = [
-  'Skill',
   'Task',
   'mcp__github__get_pull_request',
   'mcp__github__get_pull_request_files',
@@ -461,9 +458,6 @@ export class CodeReviewOrchestrator {
       this.projectRoot
     );
 
-    let javascriptBestPracticesLoaded =
-      false;
-
     const delegatedAgents =
       new Set<string>();
 
@@ -505,42 +499,6 @@ export class CodeReviewOrchestrator {
         };
       };
 
-    const enforceSkillBeforeDelegation:
-      HookCallback = async input => {
-        if (
-          input.hook_event_name !==
-            'PreToolUse'
-        ) {
-          return {};
-        }
-
-        const preToolInput =
-          input as PreToolUseHookInput;
-
-        const isDelegation =
-          preToolInput.tool_name ===
-            'Task' ||
-          preToolInput.tool_name ===
-            'Agent';
-
-        if (
-          isDelegation &&
-          !javascriptBestPracticesLoaded
-        ) {
-          return {
-            hookSpecificOutput: {
-              hookEventName:
-                preToolInput.hook_event_name,
-              permissionDecision: 'deny',
-              permissionDecisionReason:
-                'Invoke the javascript-best-practices Skill and wait for its successful completion before invoking any Task or Agent subagent.'
-            }
-          };
-        }
-
-        return {};
-      };
-
     const enforceSingleSpecialistInvocation:
       HookCallback = async input => {
         if (
@@ -563,16 +521,6 @@ export class CodeReviewOrchestrator {
             'task' &&
           normalizedToolName !==
             'agent'
-        ) {
-          return {};
-        }
-
-        /*
-         * The existing Skill hook owns the pre-Skill rejection. Do not record an
-         * attempted delegation until the required Skill has completed.
-         */
-        if (
-          !javascriptBestPracticesLoaded
         ) {
           return {};
         }
@@ -647,46 +595,6 @@ export class CodeReviewOrchestrator {
         return {};
       };
 
-    const recordCompletedRequiredSkill:
-      HookCallback = async input => {
-        if (
-          input.hook_event_name !==
-            'PostToolUse'
-        ) {
-          return {};
-        }
-
-        const postToolInput =
-          input as PostToolUseHookInput;
-
-        if (
-          postToolInput.tool_name !==
-            'Skill'
-        ) {
-          return {};
-        }
-
-        const toolInput = isRecord(
-          postToolInput.tool_input
-        )
-          ? postToolInput.tool_input
-          : {};
-
-        const completedSkill =
-          toolInput.skill ??
-          toolInput.name;
-
-        if (
-          completedSkill ===
-            'javascript-best-practices'
-        ) {
-          javascriptBestPracticesLoaded =
-            true;
-        }
-
-        return {};
-      };
-
     const messageStream = this.queryFn({
       prompt,
       options: {
@@ -740,15 +648,7 @@ export class CodeReviewOrchestrator {
             {
               hooks: [
                 denyWriteCapableTools,
-                enforceSkillBeforeDelegation,
                 enforceSingleSpecialistInvocation
-              ]
-            }
-          ],
-          PostToolUse: [
-            {
-              hooks: [
-                recordCompletedRequiredSkill
               ]
             }
           ]

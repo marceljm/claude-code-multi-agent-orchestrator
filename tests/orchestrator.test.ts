@@ -284,7 +284,6 @@ describe('CodeReviewOrchestrator', () => {
         'bypassPermissions'
       );
       expect(call.options.tools).toEqual([
-        'Skill',
         'Task'
       ]);
       expect(call.options.settingSources).toEqual([
@@ -292,7 +291,6 @@ describe('CodeReviewOrchestrator', () => {
       ]);
 
       expect(call.options.allowedTools).toEqual([
-        'Skill',
         'Task',
         'mcp__github__get_pull_request',
         'mcp__github__get_pull_request_files',
@@ -395,55 +393,23 @@ describe('CodeReviewOrchestrator', () => {
           call.options
             .hooks
             .PreToolUse[0]
-            ?.hooks[2];
-
-        const skillCompletion =
-          call.options
-            .hooks
-            .PostToolUse[0]
-            ?.hooks[0];
+            ?.hooks[1];
 
         expect(
           duplicateGuard
         ).toBeDefined();
 
         expect(
-          skillCompletion
-        ).toBeDefined();
+          call.options.hooks
+        ).not.toHaveProperty(
+          'PostToolUse'
+        );
 
         const context = {
           signal:
             new AbortController()
               .signal
         };
-
-        await skillCompletion!(
-          {
-            hook_event_name:
-              'PostToolUse',
-
-            session_id:
-              'test-session',
-
-            cwd:
-              PROJECT_ROOT,
-
-            tool_name:
-              'Skill',
-
-            tool_input: {
-              skill:
-                'javascript-best-practices'
-            },
-
-            tool_response: {
-              result:
-                'loaded'
-            }
-          },
-          'skill-completed',
-          context
-        );
 
         const first =
           await duplicateGuard!(
@@ -543,315 +509,6 @@ describe('CodeReviewOrchestrator', () => {
         }
       }
     );
-
-    it('blocks delegation until javascript-best-practices has been invoked', async () => {
-      const {
-        queryFn,
-        mock
-      } = createSuccessfulQueryMock();
-
-      const orchestrator =
-        createOrchestrator(queryFn);
-
-      await orchestrator.reviewPullRequest(
-        'airaamane',
-        'simple-todo-app',
-        2
-      );
-
-      type TestHook = (
-        input: unknown,
-        toolUseId: string,
-        context: {
-          signal: AbortSignal;
-        }
-      ) => Promise<Record<string, unknown>>;
-
-      const call = mock.mock.calls[0]?.[0] as {
-        options: {
-          hooks: {
-            PreToolUse: Array<{
-              hooks: TestHook[];
-            }>;
-            PostToolUse: Array<{
-              hooks: TestHook[];
-            }>;
-          };
-        };
-      };
-
-      const preToolUseHook =
-        call.options.hooks.PreToolUse[0]?.hooks[1];
-      const postToolUseHook =
-        call.options.hooks.PostToolUse[0]?.hooks[0];
-
-      expect(preToolUseHook).toBeDefined();
-      expect(postToolUseHook).toBeDefined();
-
-      const context = {
-        signal:
-          new AbortController().signal
-      };
-
-      const taskInput = {
-        hook_event_name: 'PreToolUse',
-        session_id: 'test-session',
-        cwd: PROJECT_ROOT,
-        tool_name: 'Task',
-        tool_input: {
-          subagent_type:
-            'code-quality-analyzer'
-        }
-      };
-
-      const deniedBeforeSkill = await preToolUseHook!(
-        taskInput,
-        'task-before-skill',
-        context
-      );
-
-      expect(deniedBeforeSkill).toMatchObject({
-        hookSpecificOutput: {
-          hookEventName: 'PreToolUse',
-          permissionDecision: 'deny'
-        }
-      });
-
-      await preToolUseHook!(
-        {
-          hook_event_name: 'PreToolUse',
-          session_id: 'test-session',
-          cwd: PROJECT_ROOT,
-          tool_name: 'Skill',
-          tool_input: {
-            skill:
-              'javascript-best-practices'
-          }
-        },
-        'required-skill-before-execution',
-        context
-      );
-
-      const deniedWhileSkillIsRunning =
-        await preToolUseHook!(
-          taskInput,
-          'task-while-skill-is-running',
-          context
-        );
-
-      expect(
-        deniedWhileSkillIsRunning
-      ).toMatchObject({
-        hookSpecificOutput: {
-          hookEventName: 'PreToolUse',
-          permissionDecision: 'deny'
-        }
-      });
-
-      await postToolUseHook!(
-        {
-          hook_event_name: 'PostToolUse',
-          session_id: 'test-session',
-          cwd: PROJECT_ROOT,
-          tool_name: 'Skill',
-          tool_input: {
-            skill: 'another-skill'
-          },
-          tool_response: {
-            result: 'loaded'
-          }
-        },
-        'wrong-skill-completed',
-        context
-      );
-
-      const deniedAfterWrongSkill =
-        await preToolUseHook!(
-          taskInput,
-          'task-after-wrong-skill',
-          context
-        );
-
-      expect(
-        deniedAfterWrongSkill
-      ).toMatchObject({
-        hookSpecificOutput: {
-          hookEventName: 'PreToolUse',
-          permissionDecision: 'deny'
-        }
-      });
-
-      await postToolUseHook!(
-        {
-          hook_event_name: 'PostToolUse',
-          session_id: 'test-session',
-          cwd: PROJECT_ROOT,
-          tool_name: 'Skill',
-          tool_input: {
-            skill:
-              'javascript-best-practices'
-          },
-          tool_response: {
-            result: 'loaded'
-          }
-        },
-        'required-skill-completed',
-        context
-      );
-
-      const allowedAfterSkillCompletion =
-        await preToolUseHook!(
-          taskInput,
-          'task-after-skill-completion',
-          context
-        );
-
-      expect(
-        allowedAfterSkillCompletion
-      ).toEqual({});
-    });
-
-    it('does not unlock delegation when the required Skill only reaches PreToolUse', async () => {
-      const {
-        queryFn,
-        mock
-      } = createSuccessfulQueryMock();
-
-      const orchestrator =
-        createOrchestrator(queryFn);
-
-      await orchestrator.reviewPullRequest(
-        'airaamane',
-        'simple-todo-app',
-        2
-      );
-
-      type TestHook = (
-        input: unknown,
-        toolUseId: string,
-        context: {
-          signal: AbortSignal;
-        }
-      ) => Promise<Record<string, unknown>>;
-
-      const call = mock.mock.calls[0]?.[0] as {
-        options: {
-          hooks: {
-            PreToolUse: Array<{
-              hooks: TestHook[];
-            }>;
-          };
-        };
-      };
-
-      const hook =
-        call.options.hooks.PreToolUse[0]?.hooks[1];
-
-      const context = {
-        signal:
-          new AbortController().signal
-      };
-
-      await hook!(
-        {
-          hook_event_name: 'PreToolUse',
-          session_id: 'test-session',
-          cwd: PROJECT_ROOT,
-          tool_name: 'Skill',
-          tool_input: {
-            skill:
-              'javascript-best-practices'
-          }
-        },
-        'skill-started',
-        context
-      );
-
-      const result = await hook!(
-        {
-          hook_event_name: 'PreToolUse',
-          session_id: 'test-session',
-          cwd: PROJECT_ROOT,
-          tool_name: 'Task',
-          tool_input: {
-            subagent_type:
-              'code-quality-analyzer'
-          }
-        },
-        'task-before-skill-completed',
-        context
-      );
-
-      expect(result).toMatchObject({
-        hookSpecificOutput: {
-          hookEventName: 'PreToolUse',
-          permissionDecision: 'deny'
-        }
-      });
-    });
-
-    it('also enforces the Skill requirement for the Agent tool alias', async () => {
-      const {
-        queryFn,
-        mock
-      } = createSuccessfulQueryMock();
-
-      const orchestrator =
-        createOrchestrator(queryFn);
-
-      await orchestrator.reviewPullRequest(
-        'airaamane',
-        'simple-todo-app',
-        2
-      );
-
-      type TestHook = (
-        input: unknown,
-        toolUseId: string,
-        context: {
-          signal: AbortSignal;
-        }
-      ) => Promise<Record<string, unknown>>;
-
-      const call = mock.mock.calls[0]?.[0] as {
-        options: {
-          hooks: {
-            PreToolUse: Array<{
-              hooks: TestHook[];
-            }>;
-          };
-        };
-      };
-
-      const hook =
-        call.options.hooks.PreToolUse[0]?.hooks[1];
-
-      const result = await hook!(
-        {
-          hook_event_name: 'PreToolUse',
-          session_id: 'test-session',
-          cwd: PROJECT_ROOT,
-          tool_name: 'Agent',
-          tool_input: {
-            subagent_type:
-              'code-quality-analyzer'
-          }
-        },
-        'agent-before-skill',
-        {
-          signal:
-            new AbortController().signal
-        }
-      );
-
-      expect(result).toMatchObject({
-        hookSpecificOutput: {
-          hookEventName: 'PreToolUse',
-          permissionDecision: 'deny'
-        }
-      });
-    });
-
     it.each([
       'Bash',
       'bash',
@@ -943,7 +600,6 @@ describe('CodeReviewOrchestrator', () => {
     );
 
     it.each([
-      'Skill',
       'Task',
       'Agent',
       'Read',
