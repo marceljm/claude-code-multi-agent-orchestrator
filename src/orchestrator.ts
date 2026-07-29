@@ -27,6 +27,15 @@ import {
 } from './utils/error-handler.js';
 
 import {
+  globalRateLimiter,
+  withRateLimit
+} from './utils/rate-limiter.js';
+
+import type {
+  RateLimiter
+} from './utils/rate-limiter.js';
+
+import {
   ReviewReportJSONSchema,
   ReviewReportSchema
 } from './types/index.js';
@@ -38,6 +47,7 @@ import type {
 type QueryFunction = typeof query;
 
 const DEFAULT_MAX_TURNS = 50;
+const DEFAULT_ESTIMATED_TOKENS_PER_REVIEW = 1000;
 
 const ORCHESTRATOR_TOOLS = [
   'Task'
@@ -93,6 +103,10 @@ export interface OrchestratorOptions {
   maxTurns?: number;
   maxBudgetUsd?: number;
   queryFn?: QueryFunction;
+  /** Process-level admission controller for complete review executions. */
+  rateLimiter?: RateLimiter;
+  /** Estimated token reservation charged to the limiter for one review. */
+  estimatedTokensPerReview?: number;
   onMessage?: (
     message: unknown
   ) => void | Promise<void>;
@@ -359,6 +373,8 @@ export class CodeReviewOrchestrator {
   private readonly maxTurns: number;
   private readonly maxBudgetUsd?: number;
   private readonly queryFn: QueryFunction;
+  private readonly rateLimiter: RateLimiter;
+  private readonly estimatedTokensPerReview: number;
   private readonly onMessage?: (
     message: unknown
   ) => void | Promise<void>;
@@ -409,47 +425,22 @@ export class CodeReviewOrchestrator {
     this.maxBudgetUsd = options.maxBudgetUsd;
 
     this.queryFn = options.queryFn ?? query;
+    this.rateLimiter = options.rateLimiter ?? globalRateLimiter;
+    this.estimatedTokensPerReview = options.estimatedTokensPerReview ?? DEFAULT_ESTIMATED_TOKENS_PER_REVIEW;
+    if (!Number.isInteger(this.estimatedTokensPerReview) || this.estimatedTokensPerReview <= 0) {
+      throw new ReviewError(
+        'estimatedTokensPerReview must be a positive integer.',
+        ErrorCodes.INVALID_CONFIG,
+        { estimatedTokensPerReview: this.estimatedTokensPerReview }
+      );
+    }
     this.onMessage = options.onMessage;
   }
 
   /**
    * Reviews one pull request using the three required subagents.
    */
-  async reviewPullRequest(
-    owner: string,
-    repo: string,
-    prNumber: number
-  ): Promise<ReviewReport> {
-    const normalizedOwner = owner.trim();
-    const normalizedRepo = repo.trim();
-
-    if (normalizedOwner.length === 0) {
-      throw new Error(
-        'Repository owner is required.'
-      );
-    }
-
-    if (normalizedRepo.length === 0) {
-      throw new Error(
-        'repository name is required.'
-      );
-    }
-
-    if (
-      !Number.isInteger(prNumber) ||
-      prNumber <= 0
-    ) {
-      throw new Error(
-        'Pull request number must be a positive integer.'
-      );
-    }
-
-    const target: PullRequestTarget = {
-      owner: normalizedOwner,
-      repo: normalizedRepo,
-      number: prNumber
-    };
-
+  private async executeReview(target: PullRequestTarget): Promise<ReviewReport> {
     const prompt = buildOrchestratorPrompt(
       target.owner,
       target.repo,
@@ -731,5 +722,17 @@ export class CodeReviewOrchestrator {
     );
 
     return parsed.data;
+  }
+
+  async reviewPullRequest(owner: string, repo: string, prNumber: number): Promise<ReviewReport> {
+    const normalizedOwner = owner.trim();
+    const normalizedRepo = repo.trim();
+    if (normalizedOwner.length === 0) throw new Error('Repository owner is required.');
+    if (normalizedRepo.length === 0) throw new Error('repository name is required.');
+    if (!Number.isInteger(prNumber) || prNumber <= 0) {
+      throw new Error('Pull request number must be a positive integer.');
+    }
+    const target: PullRequestTarget = { owner: normalizedOwner, repo: normalizedRepo, number: prNumber };
+    return withRateLimit(this.rateLimiter, () => this.executeReview(target), this.estimatedTokensPerReview);
   }
 }

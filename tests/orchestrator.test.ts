@@ -31,6 +31,8 @@ import type {
   ReviewReport
 } from '../src/types/index.js';
 
+import { RateLimiter } from '../src/utils/rate-limiter.js';
+
 const MODEL = 'claude-sonnet-4-5-20250929';
 const PROJECT_ROOT = '/tmp/code-review-project';
 
@@ -210,6 +212,63 @@ describe('CodeReviewOrchestrator', () => {
         ).toThrow('maxTurns');
       }
     );
+
+    it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+      'rejects invalid estimatedTokensPerReview value %s',
+      estimatedTokensPerReview => {
+        const { queryFn } = createSuccessfulQueryMock();
+        expect(() => createOrchestrator(queryFn, { estimatedTokensPerReview })).toThrow('estimatedTokensPerReview');
+      }
+    );
+  });
+
+  describe('rate-limited review execution', () => {
+    it('acquires with the default estimate and releases after success', async () => {
+      const { queryFn } = createSuccessfulQueryMock();
+      const rateLimiter = new RateLimiter({ maxRequestsPerMinute: 10, maxTokensPerMinute: 5000, maxConcurrent: 2 });
+      const acquireSpy = vi.spyOn(rateLimiter, 'acquire');
+      const releaseSpy = vi.spyOn(rateLimiter, 'release');
+      await createOrchestrator(queryFn, { rateLimiter }).reviewPullRequest('airaamane', 'simple-todo-app', 2);
+      expect(acquireSpy).toHaveBeenCalledWith(1000);
+      expect(releaseSpy).toHaveBeenCalledTimes(1);
+      expect(rateLimiter.getStatus()).toMatchObject({ activeRequests: 0, requestsInWindow: 1, tokensInWindow: 1000 });
+    });
+
+    it('queues a second review until concurrent capacity is released', async () => {
+      let releaseFirst!: () => void;
+      const gate = new Promise<void>(resolve => { releaseFirst = resolve; });
+      let count = 0;
+      const queryMock = vi.fn(() => ({ async *[Symbol.asyncIterator]() { if (++count === 1) await gate; yield { type: 'result', subtype: 'success', structured_output: createValidReport() }; } }));
+      const rateLimiter = new RateLimiter({ maxRequestsPerMinute: 10, maxTokensPerMinute: 1000, maxConcurrent: 1 });
+      const orchestrator = createOrchestrator(queryMock as unknown as NonNullable<OrchestratorOptions['queryFn']>, { rateLimiter, estimatedTokensPerReview: 100 });
+      const first = orchestrator.reviewPullRequest('airaamane', 'simple-todo-app', 2);
+      await vi.waitFor(() => expect(queryMock).toHaveBeenCalledTimes(1));
+      const second = orchestrator.reviewPullRequest('airaamane', 'simple-todo-app', 2);
+      await Promise.resolve();
+      expect(queryMock).toHaveBeenCalledTimes(1);
+      releaseFirst();
+      await Promise.all([first, second]);
+      expect(queryMock).toHaveBeenCalledTimes(2);
+      expect(rateLimiter.getStatus()).toMatchObject({ activeRequests: 0, requestsInWindow: 2, tokensInWindow: 200 });
+    });
+
+    it('releases the reservation when SDK stream execution fails', async () => {
+      const failure = new Error('SDK stream failed.');
+      const queryMock = vi.fn(() => ({ async *[Symbol.asyncIterator]() { throw failure; } }));
+      const rateLimiter = new RateLimiter({ maxRequestsPerMinute: 10, maxTokensPerMinute: 1000, maxConcurrent: 1 });
+      const orchestrator = createOrchestrator(queryMock as unknown as NonNullable<OrchestratorOptions['queryFn']>, { rateLimiter, estimatedTokensPerReview: 75 });
+      await expect(orchestrator.reviewPullRequest('airaamane', 'simple-todo-app', 2)).rejects.toBe(failure);
+      expect(rateLimiter.getStatus()).toMatchObject({ activeRequests: 0, requestsInWindow: 1, tokensInWindow: 75 });
+    });
+
+    it('rejects an oversized estimate before invoking the SDK', async () => {
+      const { queryFn, mock } = createSuccessfulQueryMock();
+      const rateLimiter = new RateLimiter({ maxRequestsPerMinute: 10, maxTokensPerMinute: 100, maxConcurrent: 1 });
+      const orchestrator = createOrchestrator(queryFn, { rateLimiter, estimatedTokensPerReview: 101 });
+      await expect(orchestrator.reviewPullRequest('airaamane', 'simple-todo-app', 2)).rejects.toMatchObject({ name: 'ReviewError', code: 'RATE_LIMITED' });
+      expect(mock).not.toHaveBeenCalled();
+      expect(rateLimiter.getStatus()).toMatchObject({ activeRequests: 0, requestsInWindow: 0, tokensInWindow: 0 });
+    });
   });
 
   describe('SDK configuration', () => {

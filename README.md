@@ -98,6 +98,24 @@ Each applicable skill is invoked exactly once before code analysis. The
 test-coverage and refactoring specialists intentionally do not receive the
 `Skill` tool.
 
+## Runtime rate limiting
+
+Every complete review is admitted through a process-wide rate limiter before the
+Claude Agent SDK query begins. The reservation remains active while the SDK
+stream is consumed and while the structured report is validated, and it is
+released on both success and failure.
+
+The default limits are:
+
+- 50 admitted reviews per rolling minute.
+- 100,000 estimated tokens per rolling minute.
+- Five concurrent reviews.
+- 1,000 estimated tokens reserved per review.
+
+CLI execution uses the shared `globalRateLimiter`. Programmatic callers may
+inject an isolated `RateLimiter` and a different positive
+`estimatedTokensPerReview` value through `OrchestratorOptions`.
+
 ## MCP servers
 
 - GitHub MCP for pull-request and repository operations.
