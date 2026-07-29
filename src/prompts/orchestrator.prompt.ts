@@ -109,6 +109,12 @@ the complete bundle has been assembled.
 
 ### 5. Invoke exactly three PR-level specialists
 
+Treat the requirement that all three analyses cover every changed file as an output-coverage invariant.
+
+It does not authorize separate Task calls for each file.
+
+Each of the three PR-level specialists must return one result for every changed file.
+
 Invoke exactly three specialized Task calls total for the complete pull request.
 
 Invoke code-quality-analyzer exactly once.

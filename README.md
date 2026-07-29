@@ -15,6 +15,25 @@ The runtime rejects missing, duplicate, unknown, or incorrectly ordered file
 results. Specialist delegation is bounded, and duplicate delegation aborts the
 review.
 
+### Delegation topology decision
+
+The public specification describes three specialist analyses for every changed
+file. This implementation preserves that complete per-file analytical coverage
+with three PR-level Task calls rather than `3 × changed-file-count` Task calls.
+
+Each specialist receives the complete ordered changed-file evidence bundle and
+returns one result for every changed file. The three specialists still start in
+parallel, and missing, duplicate, unknown, malformed, or incorrectly ordered
+results fail the complete review.
+
+This is an intentional deviation from the specification’s literal per-file invocation topology. It avoids multiplicative fan-out, repeated evidence,
+unbounded turn and API growth, and conflicts with the deterministic
+single-specialist and no-retry-after-delegation safety contracts.
+
+The accepted decision, trade-offs, specification mapping, and revisit criteria
+are recorded in
+[`docs/architecture/0001-pr-level-specialist-batching.md`](docs/architecture/0001-pr-level-specialist-batching.md).
+
 ## Requirements
 
 - Node.js 18 or newer. Node.js 22.23.1 is used by CI.
