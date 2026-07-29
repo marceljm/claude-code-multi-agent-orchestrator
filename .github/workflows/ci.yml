@@ -15,6 +15,9 @@ jobs:
     env:
       RUN_LIVE_INTEGRATION: "0"
       RUN_LIVE_CLI_INTEGRATION: "0"
+      RUN_LIVE_REPORT_GENERATION: "0"
+      RUN_LIVE_ANTHROPIC_CREDIT_CHECK: "0"
+      RUN_LIVE_ANTHROPIC_STRUCTURED_OUTPUT: "0"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
