@@ -10,6 +10,13 @@ import {
  * Complete Review Report Schema
  * Aggregates all subagent results into a unified report
  */
+const AgentVersionsSchema = z.strictObject({
+  orchestrator: z.string(),
+  codeQualityAnalyzer: z.string(),
+  testCoverageAnalyzer: z.string(),
+  refactoringSuggester: z.string()
+});
+
 export const ReviewReportSchema = z.object({
   pullRequest: z.object({
     owner: z.string(),
@@ -38,7 +45,7 @@ export const ReviewReportSchema = z.object({
   metadata: z.object({
     analyzedAt: z.string(),
     duration: z.number(),
-    agentVersions: z.record(z.string(), z.string())
+    agentVersions: AgentVersionsSchema
   })
 });
 
