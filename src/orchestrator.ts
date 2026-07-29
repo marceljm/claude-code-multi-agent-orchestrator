@@ -39,6 +39,15 @@ import type {
 } from './utils/rate-limiter.js';
 
 import {
+  getStructuredErrorFields,
+  logger as defaultLogger
+} from './utils/logger.js';
+
+import type {
+  StructuredLogger
+} from './utils/logger.js';
+
+import {
   ReviewReportJSONSchema,
   ReviewReportSchema
 } from './types/index.js';
@@ -116,6 +125,7 @@ export interface OrchestratorOptions {
   reviewTimeoutMs?: number;
   maxPreDelegationRetries?: number;
   retryDelayMs?: number;
+  logger?: StructuredLogger;
   onMessage?: (
     message: unknown
   ) => void | Promise<void>;
@@ -128,6 +138,7 @@ interface PullRequestTarget {
 }
 
 interface ReviewAttemptState {
+  attemptNumber: number;
   abortController: AbortController;
   specialistDelegationStarted: boolean;
   safetyViolationDetected: boolean;
@@ -401,6 +412,7 @@ export class CodeReviewOrchestrator {
   private readonly onMessage?: (
     message: unknown
   ) => void | Promise<void>;
+  private readonly logger: StructuredLogger;
 
   constructor(
     options: OrchestratorOptions = {}
@@ -448,6 +460,7 @@ export class CodeReviewOrchestrator {
     this.maxBudgetUsd = options.maxBudgetUsd;
 
     this.queryFn = options.queryFn ?? query;
+    this.logger = options.logger ?? defaultLogger;
     this.rateLimiter = options.rateLimiter ?? globalRateLimiter;
     this.estimatedTokensPerReview =
       options.estimatedTokensPerReview ??
@@ -614,6 +627,13 @@ export class CodeReviewOrchestrator {
           )
         ) {
           attemptState.safetyViolationDetected = true;
+          this.logger.warn('Specialist delegation denied', {
+            event: 'review.specialist.denied',
+            ...this.getReviewLogContext(target),
+            attempt: attemptState.attemptNumber,
+            agent: agentName ?? null,
+            reason: 'unknown-specialist'
+          });
           abortController.abort(
             new Error(
               'Unsafe or duplicate specialist delegation detected.'
@@ -640,6 +660,13 @@ export class CodeReviewOrchestrator {
           )
         ) {
           attemptState.safetyViolationDetected = true;
+          this.logger.warn('Specialist delegation denied', {
+            event: 'review.specialist.denied',
+            ...this.getReviewLogContext(target),
+            attempt: attemptState.attemptNumber,
+            agent: agentName,
+            reason: 'duplicate-specialist'
+          });
           abortController.abort(
             new Error(
               'Unsafe or duplicate specialist delegation detected.'
@@ -661,6 +688,12 @@ export class CodeReviewOrchestrator {
         }
 
         attemptState.specialistDelegationStarted = true;
+        this.logger.info('Specialist delegated', {
+          event: 'review.specialist.delegated',
+          ...this.getReviewLogContext(target),
+          attempt: attemptState.attemptNumber,
+          agent: agentName
+        });
         delegatedAgents.add(
           agentName
         );
@@ -749,6 +782,14 @@ export class CodeReviewOrchestrator {
     let structuredOutput: unknown;
 
     for await (const message of messageStream) {
+      if (!attemptState.sawStreamMessage) {
+        this.logger.debug('Agent SDK stream started', {
+          event: 'review.stream.started',
+          ...this.getReviewLogContext(target),
+          attempt: attemptState.attemptNumber,
+          messageType: message.type
+        });
+      }
       attemptState.sawStreamMessage = true;
       if (this.onMessage) {
         await this.onMessage(message);
@@ -808,9 +849,13 @@ export class CodeReviewOrchestrator {
   }
 
   private async executeReviewAttempt(
-    target: PullRequestTarget
+    target: PullRequestTarget,
+    attemptNumber: number
   ): Promise<ReviewAttemptOutcome> {
+    const attemptStartedAt = Date.now();
+    const maxAttempts = this.maxPreDelegationRetries + 1;
     const attemptState: ReviewAttemptState = {
+      attemptNumber,
       abortController:
         new AbortController(),
       specialistDelegationStarted:
@@ -820,12 +865,26 @@ export class CodeReviewOrchestrator {
       sawStreamMessage:
         false
     };
+    this.logger.info('Review attempt started', {
+      event: 'review.attempt.started',
+      ...this.getReviewLogContext(target),
+      attempt: attemptNumber,
+      maxAttempts,
+      timeoutMs: this.reviewTimeoutMs
+    });
     try {
       const report = await withTimeout(
         () => this.executeReview(target, attemptState),
         this.reviewTimeoutMs,
         `Pull-request review timed out after ${this.reviewTimeoutMs}ms.`
       );
+      this.logger.info('Review attempt completed', {
+        event: 'review.attempt.completed',
+        ...this.getReviewLogContext(target),
+        attempt: attemptNumber,
+        maxAttempts,
+        durationMs: Date.now() - attemptStartedAt
+      });
       return {
         status: 'success',
         report
@@ -844,6 +903,19 @@ export class CodeReviewOrchestrator {
         !attemptState.specialistDelegationStarted &&
         !attemptState.safetyViolationDetected &&
         !attemptState.sawStreamMessage;
+      const timedOut = isReviewError(error) && error.code === ErrorCodes.AGENT_TIMEOUT;
+      const willRetry = mayRetry && attemptNumber < maxAttempts;
+      this.logger.warn('Review attempt failed', {
+        event: 'review.attempt.failed',
+        ...this.getReviewLogContext(target),
+        attempt: attemptNumber,
+        maxAttempts,
+        durationMs: Date.now() - attemptStartedAt,
+        retryEligible: mayRetry,
+        willRetry,
+        timedOut,
+        ...getStructuredErrorFields(error)
+      });
       if (mayRetry) {
         throw error;
       }
@@ -857,11 +929,16 @@ export class CodeReviewOrchestrator {
   private async executeReviewWithResilience(
     target: PullRequestTarget
   ): Promise<ReviewReport> {
+    let attemptNumber = 0;
+    const executeAttempt = () => {
+      attemptNumber += 1;
+      return this.executeReviewAttempt(target, attemptNumber);
+    };
     const outcome =
       this.maxPreDelegationRetries === 0
-        ? await this.executeReviewAttempt(target)
+        ? await executeAttempt()
         : await withRetry(
-          () => this.executeReviewAttempt(target),
+          executeAttempt,
           this.maxPreDelegationRetries,
           this.retryDelayMs
         );
@@ -880,6 +957,60 @@ export class CodeReviewOrchestrator {
       throw new Error('Pull request number must be a positive integer.');
     }
     const target: PullRequestTarget = { owner: normalizedOwner, repo: normalizedRepo, number: prNumber };
-    return withRateLimit(this.rateLimiter, () => this.executeReviewWithResilience(target), this.estimatedTokensPerReview);
+    const reviewStartedAt = Date.now();
+    const context = this.getReviewLogContext(target);
+    this.logger.info('Code review started', {
+      event: 'review.started', ...context,
+      estimatedTokens: this.estimatedTokensPerReview,
+      timeoutMs: this.reviewTimeoutMs,
+      maxAttempts: this.maxPreDelegationRetries + 1
+    });
+    const rateLimitWaitStartedAt = Date.now();
+    this.logger.debug('Waiting for review rate-limit admission', {
+      event: 'review.rate_limit.waiting', ...context,
+      estimatedTokens: this.estimatedTokensPerReview
+    });
+    try {
+      const report = await withRateLimit(this.rateLimiter, async () => {
+        this.logger.debug('Review admitted by rate limiter', {
+          event: 'review.rate_limit.admitted', ...context,
+          waitDurationMs: Date.now() - rateLimitWaitStartedAt
+        });
+        return this.executeReviewWithResilience(target);
+      }, this.estimatedTokensPerReview);
+      this.logger.info('Code review completed', {
+        event: 'review.completed', ...context,
+        durationMs: Date.now() - reviewStartedAt,
+        totalFiles: report.summary.totalFiles,
+        overallScore: report.summary.overallScore,
+        criticalIssues: report.summary.criticalIssues,
+        highPriorityTests: report.summary.highPriorityTests,
+        refactoringOpportunities: report.summary.refactoringOpportunities
+      });
+      return report;
+    } catch (error) {
+      this.logger.error('Code review failed', {
+        event: 'review.failed', ...context,
+        durationMs: Date.now() - reviewStartedAt,
+        ...getStructuredErrorFields(error)
+      });
+      throw error;
+    }
+  }
+
+  private getReviewLogContext(
+    target: PullRequestTarget
+  ): {
+    owner: string;
+    repo: string;
+    prNumber: number;
+    model: string;
+  } {
+    return {
+      owner: target.owner,
+      repo: target.repo,
+      prNumber: target.number,
+      model: this.model
+    };
   }
 }

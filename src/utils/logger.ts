@@ -1,5 +1,88 @@
 import winston from 'winston';
 
+export type LogMetadata = Record<string, unknown>;
+
+export interface StructuredLogger {
+  debug(message: string, metadata?: LogMetadata): void;
+  info(message: string, metadata?: LogMetadata): void;
+  warn(message: string, metadata?: LogMetadata): void;
+  error(message: string, metadata?: LogMetadata): void;
+}
+
+export interface StructuredErrorFields {
+  errorName: string;
+  errorMessage: string;
+  errorCode?: string;
+}
+
+function readErrorCode(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null || !('code' in error)) {
+    return undefined;
+  }
+  return typeof error.code === 'string' ? error.code : undefined;
+}
+
+const SENSITIVE_ENVIRONMENT_NAMES = [
+  'ANTHROPIC_API_KEY',
+  'AWS_ACCESS_KEY_ID',
+  'AWS_SECRET_ACCESS_KEY',
+  'AWS_SESSION_TOKEN',
+  'GITHUB_TOKEN'
+] as const;
+
+const SECRET_ASSIGNMENT_PATTERN = new RegExp(
+  '\\b(ANTHROPIC_API_KEY|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|' +
+  'AWS_SESSION_TOKEN|GITHUB_TOKEN)\\s*[:=]\\s*([^\\s,;]+)',
+  'gi'
+);
+
+const CREDENTIAL_PATTERNS: ReadonlyArray<{
+  pattern: RegExp;
+  replacement: string;
+}> = [
+  { pattern: /\bsk-ant-[A-Za-z0-9_-]+\b/g, replacement: '[REDACTED]' },
+  { pattern: /\bgh[pousr]_[A-Za-z0-9_]+\b/g, replacement: '[REDACTED]' },
+  { pattern: /\bgithub_pat_[A-Za-z0-9_]+\b/g, replacement: '[REDACTED]' },
+  { pattern: /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, replacement: '[REDACTED]' },
+  { pattern: /\bBearer\s+[A-Za-z0-9._~+/=-]+\b/gi, replacement: 'Bearer [REDACTED]' }
+];
+
+function redactSensitiveText(value: string): string {
+  let redacted = value.replace(SECRET_ASSIGNMENT_PATTERN, '$1=[REDACTED]');
+
+  for (const environmentName of SENSITIVE_ENVIRONMENT_NAMES) {
+    const secret = process.env[environmentName];
+    if (secret === undefined || secret.length < 8) {
+      continue;
+    }
+    redacted = redacted.split(secret).join('[REDACTED]');
+  }
+
+  for (const { pattern, replacement } of CREDENTIAL_PATTERNS) {
+    redacted = redacted.replace(pattern, replacement);
+  }
+
+  return redacted;
+}
+
+export function getStructuredErrorFields(error: unknown): StructuredErrorFields {
+  const errorCode = readErrorCode(error);
+  if (error instanceof Error) {
+    const fields: StructuredErrorFields = {
+      errorName: redactSensitiveText(error.name),
+      errorMessage: redactSensitiveText(error.message),
+      ...(errorCode === undefined ? {} : { errorCode: redactSensitiveText(errorCode) })
+    };
+    return fields;
+  }
+
+  return {
+    errorName: 'NonError',
+    errorMessage: redactSensitiveText(String(error)),
+    ...(errorCode === undefined ? {} : { errorCode: redactSensitiveText(errorCode) })
+  };
+}
+
 /**
  * Application logger using Winston
  * Outputs to console and log files with structured JSON format
@@ -87,4 +170,3 @@ export const logAgentStart = (agentName: string, file: string) => {
 export const logAgentComplete = (agentName: string, file: string, duration: number) => {
   logger.debug('Subagent completed', { agent: agentName, file, duration });
 };
-

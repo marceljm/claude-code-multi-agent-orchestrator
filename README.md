@@ -135,6 +135,26 @@ attempts and backoff delays for the complete review. Programmatic callers may
 override `reviewTimeoutMs`, `maxPreDelegationRetries`, and `retryDelayMs` through
 `OrchestratorOptions`.
 
+## Structured lifecycle logging
+
+The CLI and orchestrator emit structured lifecycle events through Winston.
+Production events are written as JSON to `logs/combined.log`, while errors are
+also written to `logs/error.log`. Non-production execution also receives the
+existing console transport.
+
+Lifecycle events cover CLI initialization, rate-limit admission, SDK attempts,
+safe retry decisions, specialist delegation, first stream activity, review
+completion or failure, and report writing.
+
+Every event includes an `event` identifier and relevant structured fields such
+as repository identity, attempt number, duration, result counts, or a sanitized
+error name, message, and code. `LOG_LEVEL` controls the minimum emitted level.
+
+Lifecycle logging never includes credentials, environment contents, prompts,
+patches, source contents, tool payloads, SDK message bodies, structured report
+bodies, or generated report contents. Programmatic callers may inject a
+`StructuredLogger` through `OrchestratorOptions` or `CliDependencies`.
+
 ## MCP servers
 
 - GitHub MCP for pull-request and repository operations.

@@ -33,6 +33,51 @@ import type {
 } from '../src/types/index.js';
 
 import { RateLimiter } from '../src/utils/rate-limiter.js';
+import type { StructuredLogger } from '../src/utils/logger.js';
+
+function createNoopLogger(): StructuredLogger {
+  return {
+    debug: () => undefined,
+    info: () => undefined,
+    warn: () => undefined,
+    error: () => undefined
+  };
+}
+
+type RecordedLogLevel =
+  | 'debug'
+  | 'info'
+  | 'warn'
+  | 'error';
+
+interface RecordedLogEntry {
+  level: RecordedLogLevel;
+  message: string;
+  metadata: Record<string, unknown>;
+}
+
+function createRecordingLogger(): {
+  logger: StructuredLogger;
+  entries: RecordedLogEntry[];
+} {
+  const entries: RecordedLogEntry[] = [];
+  const createMethod = (level: RecordedLogLevel) => (
+    message: string,
+    metadata: Record<string, unknown> = {}
+  ): void => {
+    entries.push({ level, message, metadata });
+  };
+
+  return {
+    logger: {
+      debug: vi.fn(createMethod('debug')),
+      info: vi.fn(createMethod('info')),
+      warn: vi.fn(createMethod('warn')),
+      error: vi.fn(createMethod('error'))
+    },
+    entries
+  };
+}
 
 afterEach(() => {
   vi.useRealTimers();
@@ -247,11 +292,176 @@ function createOrchestrator(
     projectRoot: PROJECT_ROOT,
     maxTurns: 50,
     queryFn,
+    logger: overrides.logger ?? createNoopLogger(),
     ...overrides
   });
 }
 
 describe('CodeReviewOrchestrator', () => {
+  describe('structured lifecycle logging', () => {
+    it(
+      'logs the complete successful review lifecycle without source or report bodies',
+      async () => {
+      const logging = createRecordingLogger();
+      const rateLimiter = new RateLimiter({
+        maxRequestsPerMinute: 10,
+        maxTokensPerMinute: 10000,
+        maxConcurrent: 1
+      });
+      const queryMock = vi.fn((raw: unknown) => {
+        const input = raw as ResilientQueryInput;
+        return {
+          async *[Symbol.asyncIterator]() {
+            await invokeSpecialistGuard(input, 'code-quality-analyzer', 'one');
+            await invokeSpecialistGuard(input, 'test-coverage-analyzer', 'two');
+            await invokeSpecialistGuard(input, 'refactoring-suggester', 'three');
+            yield {
+              type: 'result',
+              subtype: 'success',
+              structured_output: createValidReport()
+            };
+          }
+        };
+      });
+
+      await createOrchestrator(
+        queryMock as unknown as NonNullable<OrchestratorOptions['queryFn']>,
+        { logger: logging.logger, rateLimiter }
+      ).reviewPullRequest('airaamane', 'simple-todo-app', 2);
+
+      expect(logging.entries.map(entry => entry.metadata.event)).toEqual([
+        'review.started',
+        'review.rate_limit.waiting',
+        'review.rate_limit.admitted',
+        'review.attempt.started',
+        'review.specialist.delegated',
+        'review.specialist.delegated',
+        'review.specialist.delegated',
+        'review.stream.started',
+        'review.attempt.completed',
+        'review.completed'
+      ]);
+      expect(logging.entries.filter(entry => entry.metadata.event === 'review.specialist.delegated')
+        .map(entry => entry.metadata.agent)).toEqual([
+          'code-quality-analyzer',
+          'test-coverage-analyzer',
+          'refactoring-suggester'
+        ]);
+      expect(logging.entries.filter(entry => entry.metadata.event === 'review.stream.started'))
+        .toHaveLength(1);
+      expect(logging.entries.find(entry => entry.metadata.event === 'review.stream.started'))
+        .toMatchObject({ metadata: { attempt: 1, messageType: 'result' } });
+      expect(logging.entries.find(entry => entry.metadata.event === 'review.completed'))
+        .toMatchObject({
+          metadata: {
+            owner: 'airaamane', repo: 'simple-todo-app', prNumber: 2, model: MODEL,
+            totalFiles: 1, overallScore: 70, criticalIssues: 0,
+            highPriorityTests: 1, refactoringOpportunities: 1,
+            durationMs: expect.any(Number)
+          }
+        });
+      const serializedEntries = JSON.stringify(logging.entries);
+      for (const sensitiveText of [
+        'structured_output', 'src/todos.ts', 'test-api-key', 'ANTHROPIC_API_KEY',
+        'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'GITHUB_TOKEN', 'tool_input',
+        'validateQuery(query)', 'Provide invalid input'
+      ]) {
+        expect(serializedEntries).not.toContain(sensitiveText);
+      }
+    });
+
+    it('logs only the first SDK stream message type', async () => {
+      const logging = createRecordingLogger();
+      const rateLimiter = new RateLimiter({
+        maxRequestsPerMinute: 10,
+        maxTokensPerMinute: 10000,
+        maxConcurrent: 1
+      });
+      const queryMock = vi.fn(() => createAsyncIterable([
+        { type: 'assistant', message: { content: [] } },
+        { type: 'user', message: { content: [] } },
+        {
+          type: 'result',
+          subtype: 'success',
+          structured_output: createValidReport()
+        }
+      ]));
+
+      await createOrchestrator(
+        queryMock as unknown as NonNullable<OrchestratorOptions['queryFn']>,
+        { logger: logging.logger, rateLimiter }
+      ).reviewPullRequest('airaamane', 'simple-todo-app', 2);
+
+      const streamEntries = logging.entries.filter(
+        entry => entry.metadata.event === 'review.stream.started'
+      );
+      expect(streamEntries).toHaveLength(1);
+      expect(streamEntries[0]).toMatchObject({
+        level: 'debug',
+        metadata: {
+          event: 'review.stream.started',
+          attempt: 1,
+          messageType: 'assistant'
+        }
+      });
+      expect(logging.entries.at(-1)?.metadata.event).toBe('review.completed');
+    });
+
+    it('logs safe retry decisions and attempt numbers', async () => {
+      vi.useFakeTimers();
+      vi.spyOn(Math, 'random').mockReturnValue(0);
+      const logging = createRecordingLogger();
+      const rateLimiter = new RateLimiter({
+        maxRequestsPerMinute: 10,
+        maxTokensPerMinute: 10000,
+        maxConcurrent: 1
+      });
+      const queryMock = vi.fn()
+        .mockImplementationOnce(() => {
+          throw new Error(
+            'Temporary SDK startup failure. ANTHROPIC_API_KEY=sk-ant-test-secret'
+          );
+        })
+        .mockImplementationOnce(() => createAsyncIterable([
+          { type: 'result', subtype: 'success', structured_output: createValidReport() }
+        ]));
+      const review = createOrchestrator(
+        queryMock as unknown as NonNullable<OrchestratorOptions['queryFn']>,
+        {
+          logger: logging.logger, rateLimiter, maxPreDelegationRetries: 1,
+          retryDelayMs: 10, reviewTimeoutMs: 1000
+        }
+      ).reviewPullRequest('airaamane', 'simple-todo-app', 2);
+      await vi.runOnlyPendingTimersAsync();
+      await expect(review).resolves.toMatchObject({ summary: { totalFiles: 1 } });
+      expect(logging.entries.filter(entry => entry.metadata.event === 'review.attempt.started')
+        .map(entry => entry.metadata.attempt)).toEqual([1, 2]);
+      expect(logging.entries.filter(entry => entry.metadata.event === 'review.attempt.failed'))
+        .toHaveLength(1);
+      expect(logging.entries.find(entry => entry.metadata.event === 'review.attempt.failed'))
+        .toMatchObject({ metadata: {
+          event: 'review.attempt.failed', attempt: 1, maxAttempts: 2,
+          retryEligible: true, willRetry: true, timedOut: false,
+          errorName: 'Error',
+          errorMessage: 'Temporary SDK startup failure. ANTHROPIC_API_KEY=[REDACTED]'
+        } });
+      expect(logging.entries.filter(entry => entry.metadata.event === 'review.rate_limit.waiting'))
+        .toHaveLength(1);
+      expect(logging.entries.filter(entry => entry.metadata.event === 'review.rate_limit.admitted'))
+        .toHaveLength(1);
+      expect(logging.entries.at(-1)?.metadata.event).toBe('review.completed');
+      expect(
+        logging.entries.some(
+          entry => entry.metadata.event === 'review.failed'
+        )
+      ).toBe(false);
+      const serializedEntries = JSON.stringify(logging.entries);
+      expect(serializedEntries).not.toContain('sk-ant-test-secret');
+      expect(serializedEntries).not.toContain(
+        'ANTHROPIC_API_KEY=sk-ant-test-secret'
+      );
+    });
+  });
   describe('constructor', () => {
     it('rejects a missing model', () => {
       const { queryFn } = createSuccessfulQueryMock();
@@ -596,6 +806,7 @@ describe('CodeReviewOrchestrator', () => {
 
     it('does not retry an unknown-specialist safety violation', async () => {
       vi.useFakeTimers();
+      const logging = createRecordingLogger();
       const queryMock = vi.fn((raw: unknown) => {
         const input = raw as ResilientQueryInput;
         const signal = input.options.abortController.signal;
@@ -618,7 +829,7 @@ describe('CodeReviewOrchestrator', () => {
       });
       const result = createOrchestrator(
         queryMock as unknown as NonNullable<OrchestratorOptions['queryFn']>,
-        { retryDelayMs: 0 }
+        { retryDelayMs: 0, logger: logging.logger }
       ).reviewPullRequest('airaamane', 'simple-todo-app', 2);
       void result.catch(() => undefined);
       await expect(result).rejects.toThrow(
@@ -627,6 +838,33 @@ describe('CodeReviewOrchestrator', () => {
       expect(queryMock).toHaveBeenCalledTimes(1);
       await vi.runOnlyPendingTimersAsync();
       expect(queryMock).toHaveBeenCalledTimes(1);
+      expect(logging.entries.filter(entry => entry.metadata.event === 'review.specialist.denied'))
+        .toHaveLength(1);
+      expect(logging.entries.find(entry => entry.metadata.event === 'review.specialist.denied'))
+        .toMatchObject({ metadata: {
+          event: 'review.specialist.denied', attempt: 1,
+          agent: 'unconfigured-analyzer', reason: 'unknown-specialist'
+        } });
+      expect(logging.entries.find(entry => entry.metadata.event === 'review.attempt.failed'))
+        .toMatchObject({
+          metadata: {
+            event: 'review.attempt.failed',
+            retryEligible: false,
+            willRetry: false
+          }
+        });
+      expect(
+        logging.entries.filter(
+          entry => entry.metadata.event === 'review.failed'
+        )
+      ).toHaveLength(1);
+      const serializedEntries = JSON.stringify(logging.entries);
+      for (const sensitiveText of [
+        'tool_input', 'structured_output', 'stack', 'ANTHROPIC_API_KEY',
+        'AWS_SECRET_ACCESS_KEY', 'GITHUB_TOKEN'
+      ]) {
+        expect(serializedEntries).not.toContain(sensitiveText);
+      }
     });
 
     it('does not retry a duplicate-specialist safety violation', async () => {

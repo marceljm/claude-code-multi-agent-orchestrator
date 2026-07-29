@@ -22,6 +22,42 @@ import type {
 import {
   ErrorCodes
 } from '../src/utils/error-handler.js';
+import type { StructuredLogger } from '../src/utils/logger.js';
+
+type RecordedLogLevel =
+  | 'debug'
+  | 'info'
+  | 'warn'
+  | 'error';
+
+interface RecordedLogEntry {
+  level: RecordedLogLevel;
+  message: string;
+  metadata: Record<string, unknown>;
+}
+
+function createRecordingLogger(): {
+  logger: StructuredLogger;
+  entries: RecordedLogEntry[];
+} {
+  const entries: RecordedLogEntry[] = [];
+  const createMethod = (level: RecordedLogLevel) => (
+    message: string,
+    metadata: Record<string, unknown> = {}
+  ): void => {
+    entries.push({ level, message, metadata });
+  };
+
+  return {
+    logger: {
+      debug: vi.fn(createMethod('debug')),
+      info: vi.fn(createMethod('info')),
+      warn: vi.fn(createMethod('warn')),
+      error: vi.fn(createMethod('error'))
+    },
+    entries
+  };
+}
 
 const validEnvironment = {
   ANTHROPIC_API_KEY: 'test-api-key',
@@ -38,6 +74,8 @@ function createDependencies(): {
   writeFile: ReturnType<typeof vi.fn>;
   stdout: ReturnType<typeof vi.fn>;
   stderr: ReturnType<typeof vi.fn>;
+  logger: StructuredLogger;
+  logEntries: RecordedLogEntry[];
 } {
   const reviewPullRequest = vi.fn().mockResolvedValue({} as ReviewReport);
   const createOrchestrator = vi.fn(() => ({ reviewPullRequest }));
@@ -50,6 +88,7 @@ function createDependencies(): {
   const writeFile = vi.fn().mockResolvedValue(undefined);
   const stdout = vi.fn();
   const stderr = vi.fn();
+  const logging = createRecordingLogger();
 
   return {
     dependencies: {
@@ -59,7 +98,10 @@ function createDependencies(): {
       writeFile,
       cwd: () => '/tmp/workspace',
       stdout: { write: stdout },
-      stderr: { write: stderr }
+      stderr: {
+        write: stderr
+      },
+      logger: logging.logger
     },
     createOrchestrator,
     reviewPullRequest,
@@ -67,7 +109,9 @@ function createDependencies(): {
     mkdir,
     writeFile,
     stdout,
-    stderr
+    stderr,
+    logger: logging.logger,
+    logEntries: logging.entries
   };
 }
 
@@ -233,6 +277,19 @@ describe('runCli', () => {
     expect(fixture.stderr).toHaveBeenCalledWith(
       'Error: [INVALID_CONFIG] Usage: npm run dev -- <owner> <repo> <pr-number>\n'
     );
+    expect(fixture.logEntries).toHaveLength(1);
+    expect(fixture.logEntries[0]).toMatchObject({
+      level: 'error',
+      metadata: {
+        event: 'cli.failed',
+        errorName: 'ReviewError',
+        errorCode: 'INVALID_CONFIG',
+        durationMs: expect.any(Number)
+      }
+    });
+    expect(fixture.logEntries[0]?.metadata).not.toHaveProperty('owner');
+    expect(fixture.logEntries[0]?.metadata).not.toHaveProperty('repo');
+    expect(fixture.logEntries[0]?.metadata).not.toHaveProperty('prNumber');
   });
 
   it('runs a review and writes Markdown, HTML, and JSON reports under reports', async () => {
@@ -256,6 +313,59 @@ describe('runCli', () => {
     expect(fixture.writeFile).toHaveBeenCalledWith(
       '/tmp/workspace/reports/owner-repo-pr-7.json', '{}', 'utf8'
     );
+    expect(fixture.logEntries.map(entry => entry.metadata.event)).toEqual([
+      'cli.started', 'reports.started', 'reports.completed', 'cli.completed'
+    ]);
+    expect(fixture.logEntries.find(entry => entry.metadata.event === 'cli.started'))
+      .toMatchObject({ metadata: {
+        owner: 'owner', repo: 'repo', prNumber: 7,
+        authentication: 'anthropic', model: 'claude-sonnet-4-5-20250929'
+      } });
+    expect(fixture.logEntries.find(entry => entry.metadata.event === 'reports.completed'))
+      .toMatchObject({ metadata: {
+        formats: ['markdown', 'html', 'json'], durationMs: expect.any(Number)
+      } });
+    const serializedEntries = JSON.stringify(fixture.logEntries);
+    expect(serializedEntries).not.toContain('test-api-key');
+    expect(serializedEntries).not.toContain('ANTHROPIC_API_KEY');
+    expect(serializedEntries).not.toContain('# report');
+    expect(serializedEntries).not.toContain('<html></html>');
+  });
+
+  it('logs report-writing failure without logging report bodies or credentials', async () => {
+    const fixture = createDependencies();
+    fixture.writeFile.mockRejectedValue(new Error(
+      'Report storage unavailable. GITHUB_TOKEN=ghp_testsecret'
+    ));
+
+    await expect(runCli(
+      ['owner', 'repo', '7'], validEnvironment, fixture.dependencies
+    )).resolves.toBe(1);
+
+    expect(fixture.logEntries.some(entry => entry.metadata.event === 'reports.started')).toBe(true);
+    expect(
+      fixture.logEntries.some(
+        entry => entry.metadata.event === 'reports.completed'
+      )
+    ).toBe(false);
+    expect(fixture.logEntries.some(entry => entry.metadata.event === 'cli.completed')).toBe(false);
+    expect(
+      fixture.logEntries.filter(
+        entry => entry.metadata.event === 'cli.failed'
+      )
+    ).toHaveLength(1);
+    expect(fixture.logEntries.find(entry => entry.metadata.event === 'cli.failed'))
+      .toMatchObject({ metadata: {
+        owner: 'owner', repo: 'repo', prNumber: 7,
+        errorName: 'Error',
+        errorMessage: 'Report storage unavailable. GITHUB_TOKEN=[REDACTED]'
+      } });
+    const serializedEntries = JSON.stringify(fixture.logEntries);
+    expect(serializedEntries).not.toContain('test-api-key');
+    expect(serializedEntries).not.toContain('# report');
+    expect(serializedEntries).not.toContain('<html></html>');
+    expect(serializedEntries).not.toContain('ghp_testsecret');
+    expect(serializedEntries).not.toContain('GITHUB_TOKEN=ghp_testsecret');
   });
 
   it('forwards REVIEW_MAX_TURNS to the orchestrator', async () => {

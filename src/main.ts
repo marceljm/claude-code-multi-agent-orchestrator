@@ -29,6 +29,13 @@ import {
   ReportGenerator
 } from './utils/report-generator.js';
 
+import {
+  getStructuredErrorFields,
+  logger as defaultLogger
+} from './utils/logger.js';
+
+import type { StructuredLogger } from './utils/logger.js';
+
 import type {
   ReviewReport
 } from './types/index.js';
@@ -88,6 +95,7 @@ interface ReportRenderer {
 }
 
 export interface CliDependencies {
+  logger?: StructuredLogger;
   createOrchestrator(
     options: {
       model: string;
@@ -529,6 +537,7 @@ export function buildReportPaths(
 
 const defaultDependencies:
   CliDependencies = {
+    logger: defaultLogger,
     createOrchestrator(
       options
     ) {
@@ -591,8 +600,11 @@ export async function runCli(
     CliDependencies =
       defaultDependencies
 ): Promise<number> {
+  const cliStartedAt = Date.now();
+  const lifecycleLogger = dependencies.logger ?? defaultLogger;
+  let target: CliTarget | undefined;
   try {
-    const target =
+    target =
       parseCliArguments(args);
 
     const runtime =
@@ -605,6 +617,12 @@ export async function runCli(
         'bedrock'
         ? 'AWS Bedrock'
         : 'Anthropic API';
+
+    lifecycleLogger.info('CLI review initialized', {
+      event: 'cli.started', owner: target.owner, repo: target.repo,
+      prNumber: target.prNumber, authentication: runtime.authentication,
+      model: runtime.model
+    });
 
     dependencies.stdout.write(
       `🔐 Using ${authenticationLabel} authentication\n`
@@ -660,6 +678,12 @@ export async function runCli(
       dependencies
         .createReportGenerator();
 
+    const reportsStartedAt = Date.now();
+    lifecycleLogger.info('Report generation started', {
+      event: 'reports.started', owner: target.owner, repo: target.repo,
+      prNumber: target.prNumber, formats: ['markdown', 'html', 'json']
+    });
+
     const paths =
       buildReportPaths(
         dependencies.cwd(),
@@ -708,12 +732,37 @@ export async function runCli(
       )
     ]);
 
+    lifecycleLogger.info('Report generation completed', {
+      event: 'reports.completed', owner: target.owner, repo: target.repo,
+      prNumber: target.prNumber, formats: ['markdown', 'html', 'json'],
+      durationMs: Date.now() - reportsStartedAt,
+      paths: { markdown: paths.markdown, html: paths.html, json: paths.json }
+    });
+
     dependencies.stdout.write(
       `Reports written:\n- ${paths.markdown}\n- ${paths.html}\n- ${paths.json}\n`
     );
 
+    lifecycleLogger.info('CLI review completed', {
+      event: 'cli.completed', owner: target.owner, repo: target.repo,
+      prNumber: target.prNumber, durationMs: Date.now() - cliStartedAt
+    });
     return 0;
   } catch (error) {
+    lifecycleLogger.error('CLI review failed', {
+      event: 'cli.failed',
+      ...(
+        target === undefined
+          ? {}
+          : {
+            owner: target.owner,
+            repo: target.repo,
+            prNumber: target.prNumber
+          }
+      ),
+      durationMs: Date.now() - cliStartedAt,
+      ...getStructuredErrorFields(error)
+    });
     dependencies.stderr.write(
       `Error: ${formatError(error)}\n`
     );
