@@ -73,7 +73,7 @@ subagent analyses.
 When no supported JavaScript or TypeScript file changed, do not invent an
 ESLint invocation.
 
-### Skill ownership
+### 3. Keep Skill ownership inside the code-quality specialist
 
 Do not invoke the Skill tool in the orchestrator.
 
@@ -83,7 +83,7 @@ TypeScript and JavaScript guidance.
 
 The test-coverage and refactoring specialists do not use Skills.
 
-### 3. Build one complete pull-request evidence bundle
+### 4. Build one complete pull-request evidence bundle
 
 Construct one compact evidence bundle for the complete pull request.
 
@@ -102,6 +102,7 @@ For every changed file, include:
 - relevant existing test context
 
 Include the pull-request metadata, ESLint findings or limitation diagnostic, and
+all required changed-file evidence listed above.
 
 Do not repeatedly fetch or duplicate the same evidence for separate files after
 the complete bundle has been assembled.

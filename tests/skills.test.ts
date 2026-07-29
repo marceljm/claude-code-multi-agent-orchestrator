@@ -203,6 +203,36 @@ describe(
         expect(orchestratorPrompt).toContain(
           'The code-quality specialist owns all Skill initialization.'
         );
+
+        const requiredSections = [
+          '### 3. Keep Skill ownership inside the code-quality specialist',
+          '### 4. Build one complete pull-request evidence bundle',
+          '### 5. Invoke exactly three PR-level specialists'
+        ];
+
+        let previousSectionIndex = -1;
+
+        for (
+          const section
+          of requiredSections
+        ) {
+          const sectionIndex =
+            orchestratorPrompt.indexOf(section);
+
+          expect(sectionIndex).toBeGreaterThan(
+            previousSectionIndex
+          );
+
+          previousSectionIndex = sectionIndex;
+        }
+
+        expect(orchestratorPrompt).toContain(
+          'Include the pull-request metadata, ESLint findings or limitation diagnostic, and\nall required changed-file evidence listed above.'
+        );
+
+        expect(orchestratorPrompt).not.toContain(
+          'ESLint findings or limitation diagnostic, and\n\n'
+        );
       }
     );
   }
