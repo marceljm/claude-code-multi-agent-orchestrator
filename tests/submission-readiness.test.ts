@@ -105,12 +105,15 @@ describe('final submission metadata', () => {
     expect(environmentExample).toContain('CLAUDE_CODE_USE_BEDROCK=1');
   });
 
-  it('documents only installed Claude skills', async () => {
+  it('documents all installed Claude skills', async () => {
     const skillsReadme = await readRepositoryFile('.claude/skills/README.md');
     expect(skillsReadme).not.toContain('TODO');
     expect(skillsReadme).not.toContain('## Your Task');
     const requiredTexts = [
       'javascript-best-practices',
+      'typescript-patterns',
+      'security-analysis',
+      '## Installed skills',
       '## Runtime use',
       '## Skill format',
       '## Adding another skill'
@@ -121,6 +124,17 @@ describe('final submission metadata', () => {
       of requiredTexts
     ) {
       expect(skillsReadme).toContain(requiredText);
+    }
+
+    for (
+      const skillName
+      of [
+        'javascript-best-practices',
+        'typescript-patterns',
+        'security-analysis'
+      ]
+    ) {
+      expect(skillsReadme).toContain(skillName);
     }
   });
 });

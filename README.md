@@ -74,7 +74,9 @@ Example: `npm run dev -- airaamane simple-todo-app 2`.
 ### Code Quality Analyzer
 
 Reviews security, performance, maintainability, style, bug risk, and modern
-best practices. It loads the installed `javascript-best-practices` skill.
+best practices. Before analysis it invokes `security-analysis` for every review,
+`typescript-patterns` when TypeScript files are present, and
+`javascript-best-practices` when JavaScript files are present.
 
 ### Test Coverage Analyzer
 
@@ -83,6 +85,18 @@ Identifies existing tests, missing paths, edge cases, and prioritized tests.
 ### Refactoring Suggester
 
 Produces evidence-based refactoring opportunities with impact and examples.
+
+## Claude Skills
+
+The code-quality specialist has access to three repository skills:
+
+- `security-analysis` for every assigned changed file.
+- `typescript-patterns` for `.ts`, `.tsx`, `.mts`, and `.cts` files.
+- `javascript-best-practices` for `.js`, `.jsx`, `.mjs`, and `.cjs` files.
+
+Each applicable skill is invoked exactly once before code analysis. The
+test-coverage and refactoring specialists intentionally do not receive the
+`Skill` tool.
 
 ## MCP servers
 
@@ -129,5 +143,5 @@ npm run test:live:anthropic-structured-output
 - Vitest
 - Winston
 
-The installed `javascript-best-practices` skill is loaded first by the code
-quality analyzer. CI runs offline with all live gates explicitly disabled.
+The code-quality analyzer loads the security skill and every applicable language
+skill before analysis. CI runs offline with all live gates explicitly disabled.

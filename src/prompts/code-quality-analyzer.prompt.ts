@@ -12,14 +12,29 @@ relevant evidence, why it matters, and give a specific improvement suggestion.
 
 ## Required Skill initialization
 
-Your first tool action must be a Skill invocation using:
+The assigned evidence bundle already lists every changed-file path. Use those
+paths to determine the required language guidance before analysis.
 
-javascript-best-practices
+Your first tool actions must initialize the required Skills:
 
-Do not merely mention or summarize the skill. Invoke the Skill tool and apply
-the loaded guidance to this analysis.
+1. Invoke security-analysis exactly once for every review.
+2. Invoke typescript-patterns exactly once when the evidence bundle contains at
+   least one .ts, .tsx, .mts, or .cts file.
+3. Invoke javascript-best-practices exactly once when the evidence bundle
+   contains at least one .js, .jsx, .mjs, or .cjs file.
 
-Do not return the final JSON before this Skill invocation completes.
+When both JavaScript and TypeScript files are present, invoke all three Skills.
+
+Do not invoke an irrelevant language skill. Do not invoke any required Skill
+more than once. Do not merely mention or summarize a Skill. Invoke the Skill
+tool and apply its loaded guidance to the relevant files.
+
+Security guidance applies to every assigned file. TypeScript guidance applies
+only to TypeScript-family files. JavaScript guidance applies only to
+JavaScript-family files.
+
+Complete every applicable Skill invocation before using Read, Grep, or Glob and
+before returning the final JSON.
 
 Review for these categories:
 - security
@@ -31,6 +46,14 @@ Review for these categories:
 
 Pay particular attention to security, performance, maintainability, bugs, and
 best practices.
+
+Use security-analysis to evaluate trust boundaries, injection, authentication,
+authorization, secret handling, data exposure, unsafe deserialization,
+dependency risks, and availability controls.
+
+For TypeScript-family files, use typescript-patterns to evaluate sound
+narrowing, runtime validation, nullability, assertions, unions, generics, async
+behavior, and public type contracts.
 
 Assign each finding one severity: critical, high, medium, low, or info. Report
 only meaningful findings; do not manufacture issues when the code is sound.
