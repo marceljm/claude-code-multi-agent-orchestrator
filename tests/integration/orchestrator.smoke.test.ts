@@ -2,28 +2,11 @@ import 'dotenv/config';
 
 import {
   appendFile,
-  cp,
   mkdir,
-  mkdtemp,
   rm,
   writeFile
 } from 'node:fs/promises';
 
-import {
-  execFile
-} from 'node:child_process';
-
-import {
-  tmpdir
-} from 'node:os';
-
-import {
-  join
-} from 'node:path';
-
-import {
-  promisify
-} from 'node:util';
 
 import {
   describe,
@@ -43,7 +26,9 @@ import type {
   ReviewReport
 } from '../../src/types/index.js';
 
-const execFileAsync = promisify(execFile);
+import {
+  prepareReviewWorkspace
+} from '../../src/utils/review-workspace.js';
 
 const LIVE =
   process.env.RUN_LIVE_INTEGRATION === '1';
@@ -691,100 +676,6 @@ function errorMessage(
     : String(error);
 }
 
-async function prepareReviewWorkspace(
-  applicationRoot: string
-): Promise<string> {
-  const workspaceRoot = await mkdtemp(
-    join(
-      tmpdir(),
-      'claude-code-review-phase-8-pr-'
-    )
-  );
-
-  await execFileAsync(
-    'git',
-    [
-      'init',
-      workspaceRoot
-    ]
-  );
-
-  await execFileAsync(
-    'git',
-    [
-      '-C',
-      workspaceRoot,
-      'remote',
-      'add',
-      'origin',
-      'https://github.com/airaamane/simple-todo-app.git'
-    ]
-  );
-
-  await execFileAsync(
-    'git',
-    [
-      '-C',
-      workspaceRoot,
-      'fetch',
-      '--depth=1',
-      'origin',
-      'pull/1/head'
-    ]
-  );
-
-  await execFileAsync(
-    'git',
-    [
-      '-C',
-      workspaceRoot,
-      'checkout',
-      '--detach',
-      'FETCH_HEAD'
-    ]
-  );
-
-  await cp(
-    join(
-      applicationRoot,
-      '.claude'
-    ),
-    join(
-      workspaceRoot,
-      '.claude'
-    ),
-    {
-      recursive: true
-    }
-  );
-
-  await writeFile(
-    join(
-      workspaceRoot,
-      'eslint.config.mjs'
-    ),
-    `export default [
-  {
-    files: [
-      '**/*.js',
-      '**/*.mjs',
-      '**/*.cjs',
-      '**/*.jsx',
-      '**/*.ts',
-      '**/*.mts',
-      '**/*.cts',
-      '**/*.tsx'
-    ],
-    rules: {}
-  }
-];
-`,
-    'utf8'
-  );
-
-  return workspaceRoot;
-}
-
 describe.skipIf(!LIVE)(
   'live CodeReviewOrchestrator smoke test',
   () => {
@@ -989,14 +880,17 @@ describe.skipIf(!LIVE)(
 
         let report:
           ReviewReport | undefined;
-        let reviewWorkspaceRoot:
-          string | undefined;
+        let preparedWorkspace:
+          Awaited<ReturnType<typeof prepareReviewWorkspace>> | undefined;
 
         try {
-          reviewWorkspaceRoot =
-            await prepareReviewWorkspace(
-              applicationRoot
-            );
+          preparedWorkspace = await prepareReviewWorkspace({
+            applicationRoot,
+            owner: TARGET.owner,
+            repo: TARGET.repo,
+            prNumber: TARGET.number,
+            githubToken: process.env.GITHUB_TOKEN
+          });
 
           console.log(
             `[phase8] Starting ${TARGET.owner}/${TARGET.repo}#${TARGET.number} with model ${model}`
@@ -1005,7 +899,7 @@ describe.skipIf(!LIVE)(
           const orchestrator =
             new CodeReviewOrchestrator({
               model,
-              projectRoot: reviewWorkspaceRoot,
+              projectRoot: preparedWorkspace.projectRoot,
               maxTurns: 80,
               onMessage: async message => {
                 messages.push(message);
@@ -1331,15 +1225,7 @@ describe.skipIf(!LIVE)(
           clearInterval(heartbeat);
           await persistProgress();
 
-          if (reviewWorkspaceRoot) {
-            await rm(
-              reviewWorkspaceRoot,
-              {
-                recursive: true,
-                force: true
-              }
-            );
-          }
+          if (preparedWorkspace) await preparedWorkspace.cleanup();
         }
       },
       10 * 60 * 1000

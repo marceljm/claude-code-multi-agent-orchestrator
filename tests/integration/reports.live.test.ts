@@ -5,9 +5,7 @@ import {
 } from 'node:child_process';
 
 import {
-  cp,
   mkdir,
-  mkdtemp,
   readFile,
   rm,
   stat,
@@ -26,6 +24,7 @@ import {
 import {
   promisify
 } from 'node:util';
+
 
 import {
   describe,
@@ -289,97 +288,8 @@ async function writeArtifact(
   );
 }
 
-async function prepareReviewWorkspace(
-  target: ReviewTarget
-): Promise<string> {
-  const workspaceRoot =
-    await mkdtemp(
-      join(
-        artifactDirectory,
-        `review-pr-${target.number}-`
-      )
-    );
-
-  await execFileAsync(
-    'git',
-    [
-      'init',
-      workspaceRoot
-    ]
-  );
-
-  await execFileAsync(
-    'git',
-    [
-      '-C',
-      workspaceRoot,
-      'remote',
-      'add',
-      'origin',
-      'https://github.com/airaamane/simple-todo-app.git'
-    ]
-  );
-
-  await execFileAsync(
-    'git',
-    [
-      '-C',
-      workspaceRoot,
-      'fetch',
-      '--depth=1',
-      'origin',
-      `pull/${target.number}/head`
-    ]
-  );
-
-  await execFileAsync(
-    'git',
-    [
-      '-C',
-      workspaceRoot,
-      'checkout',
-      '--detach',
-      'FETCH_HEAD'
-    ]
-  );
-
-  await cp(
-    join(
-      repositoryRoot,
-      '.claude'
-    ),
-    join(
-      workspaceRoot,
-      '.claude'
-    ),
-    {
-      recursive: true
-    }
-  );
-
-  await writeFile(
-    join(
-      workspaceRoot,
-      'eslint.config.mjs'
-    ),
-    `export default [
-  {
-    files: [
-      '**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}'
-    ],
-    rules: {}
-  }
-];
-`,
-    'utf8'
-  );
-
-  return workspaceRoot;
-}
-
 async function runCompiledCli(
-  target: ReviewTarget,
-  workspaceRoot: string
+  target: ReviewTarget
 ): Promise<CliExecution> {
   try {
     const result =
@@ -404,7 +314,7 @@ async function runCompiledCli(
               REPORT_MODEL,
 
             PROJECT_ROOT:
-              workspaceRoot,
+              repositoryRoot,
 
             REVIEW_MAX_TURNS:
               String(
@@ -908,19 +818,10 @@ describe.skipIf(!LIVE)(
             const target
             of selectedTargets
           ) {
-            let workspaceRoot:
-              string | undefined;
-
             try {
-              workspaceRoot =
-                await prepareReviewWorkspace(
-                  target
-                );
-
               const execution =
                 await runCompiledCli(
-                  target,
-                  workspaceRoot
+                  target
                 );
 
               await Promise.all([
@@ -999,18 +900,7 @@ describe.skipIf(!LIVE)(
                   validated.bytes
               });
             } finally {
-              if (
-                workspaceRoot !==
-                  undefined
-              ) {
-                await rm(
-                  workspaceRoot,
-                  {
-                    recursive: true,
-                    force: true
-                  }
-                );
-              }
+              // The compiled CLI owns and cleans its production workspace.
             }
           }
 

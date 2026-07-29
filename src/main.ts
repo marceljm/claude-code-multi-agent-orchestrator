@@ -30,6 +30,14 @@ import {
 } from './utils/report-generator.js';
 
 import {
+  prepareReviewWorkspace
+} from './utils/review-workspace.js';
+
+import type {
+  PreparedReviewWorkspace
+} from './utils/review-workspace.js';
+
+import {
   getStructuredErrorFields,
   logger as defaultLogger
 } from './utils/logger.js';
@@ -64,7 +72,7 @@ export interface ResolvedCliEnvironment {
   authentication:
     AuthenticationMethod;
   model: string;
-  projectRoot: string;
+  applicationRoot: string;
   maxTurns?: number;
   maxBudgetUsd?: number;
 }
@@ -111,6 +119,14 @@ export interface CliDependencies {
 
   createReportGenerator():
     ReportRenderer;
+
+  prepareReviewWorkspace(options: {
+    applicationRoot: string;
+    owner: string;
+    repo: string;
+    prNumber: number;
+    githubToken?: string;
+  }): Promise<PreparedReviewWorkspace>;
 
   mkdir(
     directory: string
@@ -351,20 +367,20 @@ export function resolveCliEnvironment(
       'ANTHROPIC_MODEL'
     );
 
-  const projectRoot =
+  const applicationRoot =
     requireEnvironmentValue(
       environment,
       'PROJECT_ROOT'
     );
 
-  if (!isAbsolute(projectRoot)) {
+  if (!isAbsolute(applicationRoot)) {
     throw new ReviewError(
       'PROJECT_ROOT must be an absolute path.',
       ErrorCodes.INVALID_CONFIG,
       {
         variableName:
           'PROJECT_ROOT',
-        projectRoot
+        applicationRoot
       }
     );
   }
@@ -432,7 +448,7 @@ export function resolveCliEnvironment(
       authentication:
         'bedrock',
       model,
-      projectRoot,
+      applicationRoot,
       ...optionalReviewSettings
     };
   }
@@ -456,7 +472,7 @@ export function resolveCliEnvironment(
       return {
         authentication: 'anthropic',
         model,
-        projectRoot,
+        applicationRoot,
         ...optionalReviewSettings
       };
     }
@@ -468,7 +484,7 @@ export function resolveCliEnvironment(
       return {
         authentication: 'vocareum',
         model,
-        projectRoot,
+        applicationRoot,
         ...optionalReviewSettings
       };
     }
@@ -571,6 +587,8 @@ const defaultDependencies:
       return new ReportGenerator();
     },
 
+    prepareReviewWorkspace,
+
     async mkdir(directory) {
       await mkdirFileSystem(
         directory,
@@ -624,6 +642,7 @@ export async function runCli(
   const cliStartedAt = Date.now();
   const lifecycleLogger = dependencies.logger ?? defaultLogger;
   let target: CliTarget | undefined;
+  let preparedWorkspace: PreparedReviewWorkspace | undefined;
   try {
     target =
       parseCliArguments(args);
@@ -661,12 +680,29 @@ export async function runCli(
       `Reviewing ${target.owner}/${target.repo}#${target.prNumber}...\n`
     );
 
+    const workspaceStartedAt = Date.now();
+    lifecycleLogger.info('Preparing review workspace', {
+      event: 'workspace.preparing', owner: target.owner, repo: target.repo,
+      prNumber: target.prNumber
+    });
+    preparedWorkspace = await dependencies.prepareReviewWorkspace({
+      applicationRoot: runtime.applicationRoot,
+      owner: target.owner,
+      repo: target.repo,
+      prNumber: target.prNumber,
+      githubToken: readEnvironmentValue(environment, 'GITHUB_TOKEN')
+    });
+    lifecycleLogger.info('Review workspace ready', {
+      event: 'workspace.ready', owner: target.owner, repo: target.repo,
+      prNumber: target.prNumber, durationMs: Date.now() - workspaceStartedAt
+    });
+
     const orchestratorOptions = {
       model:
         runtime.model,
 
       projectRoot:
-        runtime.projectRoot,
+        preparedWorkspace.projectRoot,
 
       ...(
         runtime.maxTurns ===
@@ -772,12 +808,42 @@ export async function runCli(
       `Reports written:\n- ${paths.markdown}\n- ${paths.html}\n- ${paths.json}\n`
     );
 
-    lifecycleLogger.info('CLI review completed', {
-      event: 'cli.completed', owner: target.owner, repo: target.repo,
-      prNumber: target.prNumber, durationMs: Date.now() - cliStartedAt
-    });
-    return 0;
+    let cleanupFailed = false;
+    try {
+      await preparedWorkspace.cleanup();
+      lifecycleLogger.info('Review workspace cleaned', {
+        event: 'workspace.cleaned', owner: target.owner, repo: target.repo,
+        prNumber: target.prNumber, durationMs: Date.now() - cliStartedAt
+      });
+    } catch (cleanupError) {
+      cleanupFailed = true;
+      lifecycleLogger.warn('Review workspace cleanup failed', {
+        event: 'workspace.cleanup.failed', owner: target.owner, repo: target.repo,
+        prNumber: target.prNumber, durationMs: Date.now() - cliStartedAt
+      });
+    }
+    if (!cleanupFailed) {
+      lifecycleLogger.info('CLI review completed', {
+        event: 'cli.completed', owner: target.owner, repo: target.repo,
+        prNumber: target.prNumber, durationMs: Date.now() - cliStartedAt
+      });
+    }
+    return cleanupFailed ? 1 : 0;
   } catch (error) {
+    if (preparedWorkspace !== undefined) {
+      try {
+        await preparedWorkspace.cleanup();
+        lifecycleLogger.info('Review workspace cleaned', {
+          event: 'workspace.cleaned', owner: target?.owner, repo: target?.repo,
+          prNumber: target?.prNumber, durationMs: Date.now() - cliStartedAt
+        });
+      } catch (cleanupError) {
+        lifecycleLogger.warn('Review workspace cleanup failed', {
+          event: 'workspace.cleanup.failed', owner: target?.owner, repo: target?.repo,
+          prNumber: target?.prNumber, durationMs: Date.now() - cliStartedAt
+        });
+      }
+    }
     lifecycleLogger.error('CLI review failed', {
       event: 'cli.failed',
       ...(

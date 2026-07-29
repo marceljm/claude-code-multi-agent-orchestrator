@@ -6,7 +6,6 @@ import {
 
 import {
   appendFile,
-  cp,
   mkdir,
   mkdtemp,
   readFile,
@@ -31,6 +30,7 @@ import {
   promisify
 } from 'node:util';
 
+
 import {
   describe,
   expect,
@@ -40,6 +40,7 @@ import {
 import {
   ReviewReportSchema
 } from '../../src/types/index.js';
+import { resolveCliEnvironment } from '../../src/main.js';
 
 const execFileAsync =
   promisify(execFile);
@@ -107,6 +108,14 @@ function redactSensitiveValues(
   );
 }
 
+function displayAuthenticationLabel(authentication: string): string {
+  return authentication === 'vocareum'
+    ? 'Udacity Vocareum'
+    : authentication === 'bedrock'
+      ? 'AWS Bedrock'
+      : 'Anthropic API';
+}
+
 async function writeArtifact(
   fileName: string,
   content: string,
@@ -125,93 +134,8 @@ async function writeArtifact(
   );
 }
 
-async function prepareReviewWorkspace(): Promise<string> {
-  const workspaceRoot =
-    await mkdtemp(
-      join(
-        artifactDirectory,
-        'review-'
-      )
-    );
-
-  await execFileAsync(
-    'git',
-    [
-      'init',
-      workspaceRoot
-    ]
-  );
-
-  await execFileAsync(
-    'git',
-    [
-      '-C',
-      workspaceRoot,
-      'remote',
-      'add',
-      'origin',
-      'https://github.com/airaamane/simple-todo-app.git'
-    ]
-  );
-
-  await execFileAsync(
-    'git',
-    [
-      '-C',
-      workspaceRoot,
-      'fetch',
-      '--depth=1',
-      'origin',
-      'pull/1/head'
-    ]
-  );
-
-  await execFileAsync(
-    'git',
-    [
-      '-C',
-      workspaceRoot,
-      'checkout',
-      '--detach',
-      'FETCH_HEAD'
-    ]
-  );
-
-  await cp(
-    join(
-      repositoryRoot,
-      '.claude'
-    ),
-    join(
-      workspaceRoot,
-      '.claude'
-    ),
-    {
-      recursive: true
-    }
-  );
-
-  await writeFile(
-    join(
-      workspaceRoot,
-      'eslint.config.mjs'
-    ),
-    `export default [
-  {
-    files: ['**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}'],
-    rules: {}
-  }
-];
-`,
-    'utf8'
-  );
-
-  return workspaceRoot;
-}
-
 async function runCompiledCli(
   cliWorkingDirectory: string,
-  reviewWorkspaceRoot: string,
   environment: NodeJS.ProcessEnv
 ): Promise<CliExecution> {
   try {
@@ -228,7 +152,7 @@ async function runCompiledCli(
           cwd: cliWorkingDirectory,
           env: {
             ...environment,
-            PROJECT_ROOT: reviewWorkspaceRoot
+            PROJECT_ROOT: repositoryRoot
           },
           timeout: 10 * 60 * 1000,
           maxBuffer: 1024 * 1024
@@ -265,25 +189,23 @@ describe.skipIf(!LIVE)(
     it(
       'reviews the target pull request and persists all report formats',
       async () => {
-        const apiKey =
-          requireEnvironmentVariable(
-            'ANTHROPIC_API_KEY'
-          );
-
-        const baseUrl =
-          requireEnvironmentVariable(
-            'ANTHROPIC_BASE_URL'
-          );
-
-        const model =
-          requireEnvironmentVariable(
-            'ANTHROPIC_MODEL'
-          );
-
-        const sensitiveValues = [
-          apiKey,
-          baseUrl
+        const configuredEnvironment = {
+          ...process.env,
+          PROJECT_ROOT: repositoryRoot
+        };
+        const runtime = resolveCliEnvironment(configuredEnvironment);
+        const model = requireEnvironmentVariable('ANTHROPIC_MODEL');
+        const credentialValues = [
+          configuredEnvironment.ANTHROPIC_API_KEY,
+          configuredEnvironment.ANTHROPIC_AUTH_TOKEN,
+          configuredEnvironment.GITHUB_TOKEN,
+          configuredEnvironment.GITHUB_PERSONAL_ACCESS_TOKEN,
+          configuredEnvironment.AWS_ACCESS_KEY_ID,
+          configuredEnvironment.AWS_SECRET_ACCESS_KEY,
+          configuredEnvironment.AWS_SESSION_TOKEN
         ];
+
+        const sensitiveValues = credentialValues.filter((value): value is string => Boolean(value?.trim()));
 
         await mkdir(
           artifactDirectory,
@@ -298,15 +220,10 @@ describe.skipIf(!LIVE)(
           sensitiveValues
         );
 
-        let reviewWorkspaceRoot:
-          string | undefined;
         let cliWorkingDirectory:
           string | undefined;
 
         try {
-          reviewWorkspaceRoot =
-            await prepareReviewWorkspace();
-
           cliWorkingDirectory =
             await mkdtemp(
               join(
@@ -318,11 +235,9 @@ describe.skipIf(!LIVE)(
           const execution =
             await runCompiledCli(
               cliWorkingDirectory,
-              reviewWorkspaceRoot,
               {
                 ...process.env,
-                ANTHROPIC_API_KEY: apiKey,
-                ANTHROPIC_BASE_URL: baseUrl,
+                ...configuredEnvironment,
                 ANTHROPIC_MODEL: model
               }
             );
@@ -345,10 +260,20 @@ describe.skipIf(!LIVE)(
             )
           ]);
 
-          expect(execution.exitCode).toBe(0);
+          const executionDiagnostic = redactSensitiveValues(
+            [
+              `Compiled CLI exit code: ${execution.exitCode}`,
+              '--- stdout ---',
+              execution.stdout,
+              '--- stderr ---',
+              execution.stderr
+            ].join('\n'),
+            sensitiveValues
+          );
+          expect(execution.exitCode, executionDiagnostic).toBe(0);
           expect(execution.stderr).toBe('');
           expect(execution.stdout).toContain(
-            '🔐 Using Anthropic API authentication'
+            `🔐 Using ${displayAuthenticationLabel(runtime.authentication)} authentication`
           );
           expect(execution.stdout).toContain(
             `Reviewing ${TARGET.owner}/${TARGET.repo}#${TARGET.number}...`
@@ -461,15 +386,6 @@ describe.skipIf(!LIVE)(
           throw error;
         } finally {
           await Promise.all([
-            reviewWorkspaceRoot
-              ? rm(
-                reviewWorkspaceRoot,
-                {
-                  recursive: true,
-                  force: true
-                }
-              )
-              : Promise.resolve(),
             cliWorkingDirectory
               ? rm(
                 cliWorkingDirectory,

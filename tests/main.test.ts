@@ -77,6 +77,7 @@ function createDependencies(): {
   stderr: ReturnType<typeof vi.fn>;
   logger: StructuredLogger;
   logEntries: RecordedLogEntry[];
+  cleanup: ReturnType<typeof vi.fn>;
 } {
   const reviewPullRequest = vi.fn().mockResolvedValue({} as ReviewReport);
   const createOrchestrator = vi.fn(() => ({ reviewPullRequest }));
@@ -85,6 +86,11 @@ function createDependencies(): {
     generateHTMLReport: vi.fn(() => '<html></html>'),
     generateJSONReport: vi.fn(() => '{}')
   }));
+  const cleanup = vi.fn().mockResolvedValue(undefined);
+  const prepareReviewWorkspace = vi.fn().mockResolvedValue({
+    projectRoot: '/tmp/prepared-review-workspace',
+    cleanup
+  });
   const mkdir = vi.fn().mockResolvedValue(undefined);
   const writeFile = vi.fn().mockResolvedValue(undefined);
   const stdout = vi.fn();
@@ -95,6 +101,7 @@ function createDependencies(): {
     dependencies: {
       createOrchestrator,
       createReportGenerator,
+      prepareReviewWorkspace,
       mkdir,
       writeFile,
       cwd: () => '/tmp/workspace',
@@ -107,12 +114,14 @@ function createDependencies(): {
     createOrchestrator,
     reviewPullRequest,
     createReportGenerator,
+    prepareReviewWorkspace,
     mkdir,
     writeFile,
     stdout,
     stderr,
     logger: logging.logger,
-    logEntries: logging.entries
+    logEntries: logging.entries,
+    cleanup
   };
 }
 
@@ -153,7 +162,7 @@ describe('resolveCliEnvironment', () => {
     expect(resolveCliEnvironment(validEnvironment)).toEqual({
       authentication: 'anthropic',
       model: 'claude-sonnet-4-5-20250929',
-      projectRoot: '/tmp/code-review-project'
+      applicationRoot: '/tmp/code-review-project'
     });
   });
 
@@ -164,7 +173,7 @@ describe('resolveCliEnvironment', () => {
     })).toEqual({
       authentication: 'anthropic',
       model: 'claude-sonnet-4-5-20250929',
-      projectRoot: '/tmp/code-review-project',
+      applicationRoot: '/tmp/code-review-project',
       maxTurns: 120
     });
   });
@@ -176,7 +185,7 @@ describe('resolveCliEnvironment', () => {
     })).toMatchObject({
       authentication: 'anthropic',
       model: 'claude-sonnet-4-5-20250929',
-      projectRoot: '/tmp/code-review-project',
+      applicationRoot: '/tmp/code-review-project',
       maxBudgetUsd: 1.25
     });
   });
@@ -210,7 +219,7 @@ describe('resolveCliEnvironment', () => {
     })).toEqual({
       authentication: 'vocareum',
       model: 'claude-sonnet-4-5-20250929',
-      projectRoot: '/tmp/code-review-project'
+      applicationRoot: '/tmp/code-review-project'
     });
   });
 
@@ -303,6 +312,73 @@ describe('resolveCliEnvironment', () => {
 });
 
 describe('runCli', () => {
+  it('prepares the workspace before orchestration with the exact boundary', async () => {
+    const fixture = createDependencies();
+    await expect(runCli(['owner', 'repo', '7'], validEnvironment, fixture.dependencies)).resolves.toBe(0);
+    expect(fixture.prepareReviewWorkspace.mock.invocationCallOrder[0]).toBeLessThan(fixture.createOrchestrator.mock.invocationCallOrder[0]);
+    expect(fixture.prepareReviewWorkspace).toHaveBeenCalledWith({ applicationRoot: '/tmp/code-review-project', owner: 'owner', repo: 'repo', prNumber: 7, githubToken: undefined });
+    expect(fixture.createOrchestrator).toHaveBeenCalledWith(expect.objectContaining({ projectRoot: '/tmp/prepared-review-workspace' }));
+    expect(fixture.createOrchestrator.mock.calls[0]?.[0].projectRoot).not.toBe('/tmp/code-review-project');
+  });
+
+  it('passes only the supplied environment token to workspace preparation', async () => {
+    const fixture = createDependencies();
+    await runCli(['owner', 'repo', '7'], { ...validEnvironment, GITHUB_TOKEN: 'ghp_supplied_environment_token' }, fixture.dependencies);
+    expect(fixture.prepareReviewWorkspace).toHaveBeenCalledWith(expect.objectContaining({ githubToken: 'ghp_supplied_environment_token' }));
+  });
+
+  it('does not use a global token when a supplied environment omits it', async () => {
+    const fixture = createDependencies();
+    const original = process.env.GITHUB_TOKEN;
+    try {
+      process.env.GITHUB_TOKEN = 'ghp_global_environment_token';
+      await runCli(['owner', 'repo', '7'], validEnvironment, fixture.dependencies);
+      expect(fixture.prepareReviewWorkspace).toHaveBeenCalledWith(expect.objectContaining({ githubToken: undefined }));
+    } finally {
+      if (original === undefined) delete process.env.GITHUB_TOKEN; else process.env.GITHUB_TOKEN = original;
+    }
+  });
+  it.each(['orchestration', 'rendering', 'writing'])('cleans the prepared workspace after %s failure', async failure => {
+    const fixture = createDependencies();
+    if (failure === 'orchestration') fixture.reviewPullRequest.mockRejectedValue(new Error('review failed'));
+    if (failure === 'rendering') fixture.createReportGenerator.mockReturnValue({
+      generateMarkdownReport: () => { throw new Error('render failed'); },
+      generateHTMLReport: () => '<html></html>', generateJSONReport: () => '{}'
+    });
+    if (failure === 'writing') fixture.writeFile.mockRejectedValue(new Error('write failed'));
+    await expect(runCli(['owner', 'repo', '7'], validEnvironment, fixture.dependencies)).resolves.toBe(1);
+    expect(fixture.cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not create an orchestrator when workspace preparation fails', async () => {
+    const fixture = createDependencies();
+    fixture.prepareReviewWorkspace.mockRejectedValue(new ReviewError('workspace failed', ErrorCodes.WORKSPACE_PREPARATION_FAILED));
+    await expect(runCli(['owner', 'repo', '7'], validEnvironment, fixture.dependencies)).resolves.toBe(1);
+    expect(fixture.createOrchestrator).not.toHaveBeenCalled();
+  });
+
+  it('returns non-zero and sanitizes cleanup-only failures', async () => {
+    const fixture = createDependencies();
+    fixture.cleanup.mockRejectedValue(new Error('/tmp/untrusted-workspace GITHUB_TOKEN=fake'));
+    await expect(runCli(['owner', 'repo', '7'], validEnvironment, fixture.dependencies)).resolves.toBe(1);
+    expect(fixture.cleanup).toHaveBeenCalledTimes(1);
+    expect(fixture.logEntries.some(entry => entry.metadata.event === 'workspace.cleanup.failed')).toBe(true);
+    expect(fixture.logEntries.some(entry => entry.metadata.event === 'cli.completed')).toBe(false);
+    expect(JSON.stringify(fixture.logEntries)).not.toContain('/tmp/untrusted-workspace');
+    expect(JSON.stringify(fixture.logEntries)).not.toContain('fake');
+  });
+
+  it('preserves the primary failure when cleanup also fails', async () => {
+    const fixture = createDependencies();
+    fixture.reviewPullRequest.mockRejectedValue(new Error('orchestration failed'));
+    fixture.cleanup.mockRejectedValue(new Error('/tmp/untrusted-workspace cleanup-secret'));
+    await expect(runCli(['owner', 'repo', '7'], validEnvironment, fixture.dependencies)).resolves.toBe(1);
+    expect(fixture.stderr).toHaveBeenCalledWith('Error: orchestration failed\n');
+    expect(JSON.stringify(fixture.logEntries)).toContain('orchestration failed');
+    expect(JSON.stringify(fixture.logEntries)).not.toContain('cleanup-secret');
+    expect(fixture.logEntries.some(entry => entry.metadata.event === 'workspace.cleanup.failed')).toBe(true);
+  });
+
   it('prints the Udacity Vocareum authentication label', async () => {
     const fixture = createDependencies();
 
@@ -348,7 +424,7 @@ describe('runCli', () => {
 
     expect(fixture.createOrchestrator).toHaveBeenCalledWith({
       model: 'claude-sonnet-4-5-20250929',
-      projectRoot: '/tmp/code-review-project'
+      projectRoot: '/tmp/prepared-review-workspace'
     });
     expect(fixture.reviewPullRequest).toHaveBeenCalledWith('owner', 'repo', 7);
     expect(fixture.mkdir).toHaveBeenCalledWith('/tmp/workspace/reports');
@@ -362,7 +438,8 @@ describe('runCli', () => {
       '/tmp/workspace/reports/owner-repo-pr-7.json', '{}', 'utf8'
     );
     expect(fixture.logEntries.map(entry => entry.metadata.event)).toEqual([
-      'cli.started', 'reports.started', 'reports.completed', 'cli.completed'
+      'cli.started', 'workspace.preparing', 'workspace.ready',
+      'reports.started', 'reports.completed', 'workspace.cleaned', 'cli.completed'
     ]);
     expect(fixture.logEntries.find(entry => entry.metadata.event === 'cli.started'))
       .toMatchObject({ metadata: {
@@ -434,7 +511,7 @@ describe('runCli', () => {
 
     expect(fixture.createOrchestrator).toHaveBeenCalledWith({
       model: 'claude-sonnet-4-5-20250929',
-      projectRoot: '/tmp/code-review-project',
+      projectRoot: '/tmp/prepared-review-workspace',
       maxTurns: 120
     });
 
@@ -460,7 +537,7 @@ describe('runCli', () => {
 
     expect(fixture.createOrchestrator).toHaveBeenCalledWith({
       model: 'claude-sonnet-4-5-20250929',
-      projectRoot: '/tmp/code-review-project',
+      projectRoot: '/tmp/prepared-review-workspace',
       maxTurns: 80,
       maxBudgetUsd: 1.25
     });

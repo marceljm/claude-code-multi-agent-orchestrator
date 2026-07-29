@@ -37,7 +37,7 @@ are recorded in
 ## Requirements
 
 - Node.js 18 or newer. Node.js 22.23.1 is used by CI.
-- npm, GitHub access, and Udacity Vocareum, direct Anthropic, or AWS Bedrock access.
+- npm, Git installed on `PATH`, GitHub access, and Udacity Vocareum, direct Anthropic, or AWS Bedrock access.
 - A GitHub token is recommended for higher limits and private repositories.
 
 ## Installation
@@ -57,7 +57,7 @@ Edit `.env` before running a review.
 ANTHROPIC_API_KEY=<your-udacity-api-key>
 ANTHROPIC_BASE_URL=https://claude.vocareum.com
 ANTHROPIC_MODEL=claude-sonnet-4-5-20250929
-PROJECT_ROOT=/absolute/path/to/the/review-workspace
+PROJECT_ROOT=/absolute/path/to/claude-code-multi-agent-orchestrator
 ```
 
 The API key is supplied by Udacity and must remain private.
@@ -98,6 +98,19 @@ npm start -- <owner> <repository> <pull-request-number>
 ```
 
 Example: `npm run dev -- airaamane simple-todo-app 2`.
+
+## Local review workspace
+
+`PROJECT_ROOT` is the absolute path to the installed orchestrator repository,
+which contains its trusted `.claude` directory. The CLI automatically creates
+an isolated temporary checkout of `pull/<number>/head`, installs trusted Claude
+skills, writes reports under the invocation directory, and removes the checkout
+after success or failure. Users do not need to prepare the target repository.
+
+`GITHUB_TOKEN` is optional for public repositories and may be needed for private
+ones. It is supplied to Git fetch through temporary configuration and is not
+embedded in the URL or persisted in `.git/config`. Target dependencies are not
+installed and repository scripts are not executed.
 
 ## Review specialists
 

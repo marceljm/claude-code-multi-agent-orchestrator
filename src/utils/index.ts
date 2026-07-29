@@ -2,6 +2,15 @@
 
 export { logger } from './logger.js';
 export { ReportGenerator } from './report-generator.js';
+export { prepareReviewWorkspace } from './review-workspace.js';
+export type {
+  GitInvocation,
+  GitRunner,
+  PrepareReviewWorkspaceOptions,
+  PreparedReviewWorkspace,
+  ReviewWorkspaceDependencies,
+  WorkspacePreparationStage
+} from './review-workspace.js';
 
 export { DEFAULT_RATE_LIMITS, RateLimiter, globalRateLimiter, withRateLimit } from './rate-limiter.js';
 export type { RateLimiterConfig } from './rate-limiter.js';
