@@ -34,6 +34,10 @@ The accepted decision, trade-offs, specification mapping, and revisit criteria
 are recorded in
 [`docs/architecture/0001-pr-level-specialist-batching.md`](docs/architecture/0001-pr-level-specialist-batching.md).
 
+See [Review Execution Flow](docs/architecture/execution-flow.md) for Mermaid
+diagrams of workspace preparation, evidence collection, parallel specialist
+execution, validation, report generation, and cleanup.
+
 ## Requirements
 
 - Node.js 22.x. Node.js 22.23.1 is used by CI and recorded in .nvmrc.
