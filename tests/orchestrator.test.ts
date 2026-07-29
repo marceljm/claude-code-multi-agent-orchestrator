@@ -1200,6 +1200,14 @@ describe('CodeReviewOrchestrator', () => {
       );
     });
 
+    it('formats nested Zod 4 issue paths', async () => {
+      const invalidReport = createValidReport();
+      invalidReport.fileReviews[0]!.codeQuality.overallScore = 101;
+      const { queryFn } = createQueryMock([{ type: 'result', subtype: 'success', structured_output: invalidReport }]);
+      const orchestrator = createOrchestrator(queryFn);
+      await expect(orchestrator.reviewPullRequest('airaamane', 'simple-todo-app', 2)).rejects.toThrow('fileReviews.0.codeQuality.overallScore');
+    });
+
     it('propagates query transport failures', async () => {
       const mock = vi.fn(() => ({
         async *[Symbol.asyncIterator]() {

@@ -156,9 +156,14 @@ function requireNonEmptyString(
   return value.trim();
 }
 
+function formatSchemaPathSegment(segment: PropertyKey): string {
+  if (typeof segment === 'symbol') return segment.description ?? segment.toString();
+  return String(segment);
+}
+
 function formatSchemaIssues(
-  issues: Array<{
-    path: Array<string | number>;
+  issues: ReadonlyArray<{
+    path: ReadonlyArray<PropertyKey>;
     message: string;
   }>
 ): string {
@@ -166,7 +171,7 @@ function formatSchemaIssues(
     .map(issue => {
       const path =
         issue.path.length > 0
-          ? issue.path.join('.')
+          ? issue.path.map(formatSchemaPathSegment).join('.')
           : '<root>';
 
       return `${path}: ${issue.message}`;

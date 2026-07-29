@@ -20,6 +20,7 @@
     "test:live:cli": "npm run build && RUN_LIVE_CLI_INTEGRATION=1 vitest run tests/integration/cli.live.test.ts --reporter=verbose",
     "test:live:reports": "npm run build && RUN_LIVE_REPORT_GENERATION=1 vitest run tests/integration/reports.live.test.ts --reporter=verbose",
     "test:live:anthropic-credit": "npm run build && RUN_LIVE_ANTHROPIC_CREDIT_CHECK=1 vitest run tests/integration/anthropic-credit.live.test.ts --reporter=verbose",
+    "test:live:anthropic-structured-output": "npm run build && RUN_LIVE_ANTHROPIC_STRUCTURED_OUTPUT=1 vitest run tests/integration/anthropic-structured-output.live.test.ts --reporter=verbose",
     "test:ci": "npm run build && npm run test:unit && npm run test:integration",
     "test:watch": "vitest",
     "lint": "tsc --noEmit"
@@ -37,8 +38,7 @@
     "@modelcontextprotocol/sdk": "^1.23.0",
     "dotenv": "^16.0.0",
     "winston": "^3.11.0",
-    "zod": "4.4.3",
-    "zod-to-json-schema": "^3.22.0"
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

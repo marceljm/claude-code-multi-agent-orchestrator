@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { zodToJsonSchema } from 'zod-to-json-schema';
+import { toDraft07JsonSchema } from './json-schema.js';
 
 /**
  * Structured output schemas for subagent analysis results
@@ -69,18 +69,6 @@ export type CodeQualityResult = z.infer<typeof CodeQualityResultSchema>;
 export type TestCoverageResult = z.infer<typeof TestCoverageResultSchema>;
 export type RefactoringSuggestion = z.infer<typeof RefactoringSuggestionSchema>;
 
-type JsonSchema = Record<string, unknown>;
-const toJsonSchema = (schema: z.ZodTypeAny): JsonSchema =>
-  (zodToJsonSchema as (s: unknown, options?: unknown) => unknown)(
-    schema,
-    { $refStrategy: 'root' }
-  ) as JsonSchema;
-
-/**
- * Convert Zod schemas to JSON Schema for SDK structured outputs
- * Per SDK docs: https://platform.claude.com/docs/en/agent-sdk/structured-outputs
- * Use $refStrategy: 'root' to properly inline all $ref definitions
- */
-export const CodeQualityResultJSONSchema: JsonSchema = toJsonSchema(CodeQualityResultSchema);
-export const TestCoverageResultJSONSchema: JsonSchema = toJsonSchema(TestCoverageResultSchema);
-export const RefactoringSuggestionJSONSchema: JsonSchema = toJsonSchema(RefactoringSuggestionSchema);
+export const CodeQualityResultJSONSchema = toDraft07JsonSchema(CodeQualityResultSchema);
+export const TestCoverageResultJSONSchema = toDraft07JsonSchema(TestCoverageResultSchema);
+export const RefactoringSuggestionJSONSchema = toDraft07JsonSchema(RefactoringSuggestionSchema);
