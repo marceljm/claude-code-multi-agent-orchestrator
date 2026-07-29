@@ -42,12 +42,10 @@ describe('final submission metadata', () => {
     expect(rootPackage?.dependencies?.['@modelcontextprotocol/sdk']).toBe('1.29.0');
   });
 
-  it('documents completed direct-Anthropic and Bedrock configuration', async () => {
+  it('documents completed Vocareum, direct-Anthropic, and Bedrock configuration', async () => {
     const readme = await readRepositoryFile('README.md');
     const environmentExample = await readRepositoryFile('.env.example');
     const obsoleteTexts = [
-      'Vocareum',
-      'claude-sonnet',
       'What You Need to Implement',
       'starter project',
       'Starter project'
@@ -65,6 +63,7 @@ describe('final submission metadata', () => {
       '## Architecture',
       '## Requirements',
       '## Installation',
+      '## Udacity Vocareum configuration',
       '## Direct Anthropic configuration',
       '## AWS Bedrock configuration',
       '## Running a review',
@@ -84,7 +83,6 @@ describe('final submission metadata', () => {
     }
 
     const settings = [
-      'ANTHROPIC_MODEL=claude-haiku-4-5-20251001',
       'REVIEW_MAX_TURNS=80',
       'REVIEW_MAX_BUDGET_USD=1.25'
     ];
@@ -96,8 +94,20 @@ describe('final submission metadata', () => {
       expect(readme).toContain(setting);
       expect(environmentExample).toContain(setting);
     }
-    expect(readme).toContain('ANTHROPIC_BASE_URL` must remain unset');
-    expect(environmentExample).toContain('ANTHROPIC_BASE_URL must remain unset');
+    expect(readme).toContain(
+      'ANTHROPIC_MODEL=claude-sonnet-4-5-20250929'
+    );
+    expect(environmentExample).toContain(
+      'ANTHROPIC_MODEL=claude-sonnet-4-5-20250929'
+    );
+    expect(readme).toContain(
+      'ANTHROPIC_BASE_URL=https://claude.vocareum.com'
+    );
+    expect(environmentExample).toContain(
+      'ANTHROPIC_BASE_URL=https://claude.vocareum.com'
+    );
+    expect(readme).toContain('ANTHROPIC_BASE_URL` must be unset');
+    expect(environmentExample).toContain('Remove or comment out ANTHROPIC_BASE_URL');
     expect(environmentExample).toContain(
       'PROJECT_ROOT=/absolute/path/to/claude-code-multi-agent-orchestrator'
     );

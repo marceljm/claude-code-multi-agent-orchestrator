@@ -46,8 +46,12 @@ const USAGE =
 const SAFE_REPOSITORY_COMPONENT =
   /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
+const VOCAREUM_BASE_URL =
+  'https://claude.vocareum.com';
+
 export type AuthenticationMethod =
   | 'anthropic'
+  | 'vocareum'
   | 'bedrock';
 
 export interface CliTarget {
@@ -144,6 +148,12 @@ function readEnvironmentValue(
   }
 
   return value.trim();
+}
+
+function normalizeBaseUrl(
+  value: string
+): string {
+  return value.replace(/\/+$/, '');
 }
 
 function requireEnvironmentValue(
@@ -442,23 +452,34 @@ export function resolveCliEnvironment(
   if (
     anthropicApiKey !== undefined
   ) {
-    if (anthropicBaseUrl !== undefined) {
-      throw new ReviewError(
-        'ANTHROPIC_BASE_URL must be unset when using direct Anthropic API authentication.',
-        ErrorCodes.INVALID_CONFIG,
-        {
-          variableName: 'ANTHROPIC_BASE_URL'
-        }
-      );
+    if (anthropicBaseUrl === undefined) {
+      return {
+        authentication: 'anthropic',
+        model,
+        projectRoot,
+        ...optionalReviewSettings
+      };
     }
 
-    return {
-      authentication:
-        'anthropic',
-      model,
-      projectRoot,
-      ...optionalReviewSettings
-    };
+    if (
+      normalizeBaseUrl(anthropicBaseUrl) ===
+        VOCAREUM_BASE_URL
+    ) {
+      return {
+        authentication: 'vocareum',
+        model,
+        projectRoot,
+        ...optionalReviewSettings
+      };
+    }
+
+    throw new ReviewError(
+      `ANTHROPIC_BASE_URL must be unset for direct Anthropic API access or set to ${VOCAREUM_BASE_URL} for Udacity Vocareum.`,
+      ErrorCodes.INVALID_CONFIG,
+      {
+        variableName: 'ANTHROPIC_BASE_URL'
+      }
+    );
   }
 
   const awsVariablesPresent = [
@@ -612,11 +633,19 @@ export async function runCli(
         environment
       );
 
-    const authenticationLabel =
-      runtime.authentication ===
-        'bedrock'
-        ? 'AWS Bedrock'
-        : 'Anthropic API';
+    let authenticationLabel: string;
+
+    switch (runtime.authentication) {
+      case 'bedrock':
+        authenticationLabel = 'AWS Bedrock';
+        break;
+      case 'vocareum':
+        authenticationLabel = 'Udacity Vocareum';
+        break;
+      case 'anthropic':
+        authenticationLabel = 'Anthropic API';
+        break;
+    }
 
     lifecycleLogger.info('CLI review initialized', {
       event: 'cli.started', owner: target.owner, repo: target.repo,

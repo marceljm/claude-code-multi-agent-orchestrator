@@ -20,7 +20,8 @@ import type {
 } from '../src/types/index.js';
 
 import {
-  ErrorCodes
+  ErrorCodes,
+  ReviewError
 } from '../src/utils/error-handler.js';
 import type { StructuredLogger } from '../src/utils/logger.js';
 
@@ -202,11 +203,44 @@ describe('resolveCliEnvironment', () => {
     }
   );
 
-  it('rejects ANTHROPIC_BASE_URL for direct Anthropic authentication', () => {
-    expect(() => resolveCliEnvironment({
+  it('accepts Udacity Vocareum authentication', () => {
+    expect(resolveCliEnvironment({
       ...validEnvironment,
-      ANTHROPIC_BASE_URL: 'https://gateway.example.test'
-    })).toThrow('ANTHROPIC_BASE_URL must be unset');
+      ANTHROPIC_BASE_URL: 'https://claude.vocareum.com'
+    })).toEqual({
+      authentication: 'vocareum',
+      model: 'claude-sonnet-4-5-20250929',
+      projectRoot: '/tmp/code-review-project'
+    });
+  });
+
+  it('accepts a trailing slash in the Vocareum base URL', () => {
+    expect(resolveCliEnvironment({
+      ...validEnvironment,
+      ANTHROPIC_BASE_URL: 'https://claude.vocareum.com/'
+    })).toMatchObject({ authentication: 'vocareum' });
+  });
+
+  it('rejects unsupported custom Anthropic endpoints without exposing secrets', () => {
+    const environment = {
+      ...validEnvironment,
+      ANTHROPIC_BASE_URL: 'https://unsupported.example.test'
+    };
+
+    try {
+      resolveCliEnvironment(environment);
+      throw new Error('Expected unsupported endpoint validation to fail.');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ReviewError);
+      expect(error).toMatchObject({
+        code: ErrorCodes.INVALID_CONFIG,
+        metadata: { variableName: 'ANTHROPIC_BASE_URL' }
+      });
+      expect((error as Error).message).toContain('unset for direct Anthropic API access');
+      expect((error as Error).message).toContain('https://claude.vocareum.com');
+      expect(JSON.stringify(error)).not.toContain('test-api-key');
+      expect(JSON.stringify(error)).not.toContain('unsupported.example.test');
+    }
   });
 
   it.each([
@@ -269,6 +303,20 @@ describe('resolveCliEnvironment', () => {
 });
 
 describe('runCli', () => {
+  it('prints the Udacity Vocareum authentication label', async () => {
+    const fixture = createDependencies();
+
+    await expect(runCli(
+      ['owner', 'repo', '7'],
+      { ...validEnvironment, ANTHROPIC_BASE_URL: 'https://claude.vocareum.com' },
+      fixture.dependencies
+    )).resolves.toBe(0);
+
+    expect(fixture.stdout).toHaveBeenCalledWith(
+      '🔐 Using Udacity Vocareum authentication\n'
+    );
+  });
+
   it('returns one and formats validation errors without creating an orchestrator', async () => {
     const fixture = createDependencies();
 

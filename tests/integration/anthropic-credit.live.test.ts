@@ -11,8 +11,42 @@ const LIVE =
     .RUN_LIVE_ANTHROPIC_CREDIT_CHECK ===
   '1';
 
-const ANTHROPIC_MESSAGES_URL =
-  'https://api.anthropic.com/v1/messages';
+const DIRECT_ANTHROPIC_BASE_URL =
+  'https://api.anthropic.com';
+
+const VOCAREUM_BASE_URL =
+  'https://claude.vocareum.com';
+
+function normalizeBaseUrl(
+  value: string
+): string {
+  return value.replace(/\/+$/, '');
+}
+
+function resolveMessagesUrl(
+  configuredBaseUrl: string | undefined
+): string {
+  const trimmedBaseUrl =
+    configuredBaseUrl?.trim();
+
+  if (!trimmedBaseUrl) {
+    return `${DIRECT_ANTHROPIC_BASE_URL}/v1/messages`;
+  }
+
+  const normalizedBaseUrl =
+    normalizeBaseUrl(trimmedBaseUrl);
+
+  if (
+    normalizedBaseUrl ===
+      VOCAREUM_BASE_URL
+  ) {
+    return `${normalizedBaseUrl}/v1/messages`;
+  }
+
+  throw new Error(
+    `ANTHROPIC_BASE_URL must be unset for direct Anthropic API access or set to ${VOCAREUM_BASE_URL} for Udacity Vocareum.`
+  );
+}
 
 interface AnthropicSuccessBody {
   id?: unknown;
@@ -196,13 +230,73 @@ describe(
   }
 );
 
+describe(
+  'Anthropic Messages endpoint resolution',
+  () => {
+    it(
+      'uses the direct Anthropic endpoint when the base URL is unset',
+      () => {
+        expect(
+          resolveMessagesUrl(undefined)
+        ).toBe(
+          'https://api.anthropic.com/v1/messages'
+        );
+      }
+    );
+
+    it(
+      'uses the direct Anthropic endpoint when the base URL is empty',
+      () => {
+        expect(
+          resolveMessagesUrl('   ')
+        ).toBe(
+          'https://api.anthropic.com/v1/messages'
+        );
+      }
+    );
+
+    it(
+      'uses the Udacity Vocareum endpoint',
+      () => {
+        expect(
+          resolveMessagesUrl('https://claude.vocareum.com')
+        ).toBe(
+          'https://claude.vocareum.com/v1/messages'
+        );
+      }
+    );
+
+    it(
+      'normalizes a trailing slash in the Vocareum endpoint',
+      () => {
+        expect(
+          resolveMessagesUrl('https://claude.vocareum.com/')
+        ).toBe(
+          'https://claude.vocareum.com/v1/messages'
+        );
+      }
+    );
+
+    it(
+      'rejects unsupported custom endpoints',
+      () => {
+        expect(
+          () => resolveMessagesUrl('https://unsupported.example.test')
+        ).toThrow(
+          'ANTHROPIC_BASE_URL must be unset for direct Anthropic API access or set to https://claude.vocareum.com for Udacity Vocareum.'
+        );
+      }
+    );
+  }
+);
+
 describe.skipIf(
   !LIVE
 )(
-  'Anthropic credit availability smoke test',
+  'Configured Anthropic provider availability smoke test',
   () => {
     it(
-      'completes one minimal Messages API request',
+      'completes one minimal Messages API request against the configured provider',
       async () => {
         const apiKey =
           requireEnvironmentVariable(
@@ -214,15 +308,10 @@ describe.skipIf(
             'ANTHROPIC_MODEL'
           );
 
-        if (
-          process.env
-            .ANTHROPIC_BASE_URL
-            ?.trim()
-        ) {
-          throw new Error(
-            'ANTHROPIC_BASE_URL must be unset for the direct Anthropic credit smoke test.'
+        const messagesUrl =
+          resolveMessagesUrl(
+            process.env.ANTHROPIC_BASE_URL
           );
-        }
 
         const sensitiveValues = [
           apiKey
@@ -244,7 +333,7 @@ describe.skipIf(
         try {
           response =
             await fetch(
-              ANTHROPIC_MESSAGES_URL,
+              messagesUrl,
               {
                 method:
                   'POST',

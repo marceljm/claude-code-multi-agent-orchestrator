@@ -37,7 +37,7 @@ are recorded in
 ## Requirements
 
 - Node.js 18 or newer. Node.js 22.23.1 is used by CI.
-- npm, GitHub access, and direct Anthropic or AWS Bedrock access.
+- npm, GitHub access, and Udacity Vocareum, direct Anthropic, or AWS Bedrock access.
 - A GitHub token is recommended for higher limits and private repositories.
 
 ## Installation
@@ -51,11 +51,22 @@ cp .env.example .env
 
 Edit `.env` before running a review.
 
+## Udacity Vocareum configuration
+
+```dotenv
+ANTHROPIC_API_KEY=<your-udacity-api-key>
+ANTHROPIC_BASE_URL=https://claude.vocareum.com
+ANTHROPIC_MODEL=claude-sonnet-4-5-20250929
+PROJECT_ROOT=/absolute/path/to/the/review-workspace
+```
+
+The API key is supplied by Udacity and must remain private.
+
 ## Direct Anthropic configuration
 
 ```dotenv
-ANTHROPIC_API_KEY=sk-ant-your-private-key
-ANTHROPIC_MODEL=claude-haiku-4-5-20251001
+ANTHROPIC_API_KEY=<your-personal-anthropic-api-key>
+ANTHROPIC_MODEL=claude-sonnet-4-5-20250929
 PROJECT_ROOT=/absolute/path/to/claude-code-multi-agent-orchestrator
 REVIEW_MAX_TURNS=80
 REVIEW_MAX_BUDGET_USD=1.25
@@ -63,7 +74,7 @@ GITHUB_TOKEN=ghp_your-private-token
 LOG_LEVEL=info
 ```
 
-`ANTHROPIC_BASE_URL` must remain unset for direct Anthropic authentication.
+`ANTHROPIC_BASE_URL` must be unset when using a personal Anthropic API key.
 
 ## AWS Bedrock configuration
 
