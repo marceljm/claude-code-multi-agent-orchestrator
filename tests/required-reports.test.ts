@@ -59,14 +59,9 @@ describe('required submission reports', () => {
         access(reportPath)
       ).resolves.toBeUndefined();
 
-      expect(
-        (
-          await readFile(
-            reportPath,
-            'utf8'
-          )
-        ).trim()
-      ).not.toBe('');
+      const content = await readFile(reportPath, 'utf8');
+      expect(content.trim()).not.toBe('');
+      expect(content).not.toMatch(/[ \t]+$/m);
     }
   );
 });

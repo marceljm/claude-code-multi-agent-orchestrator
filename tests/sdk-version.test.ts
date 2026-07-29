@@ -11,9 +11,10 @@ async function readJsonFile<T>(relativePath: string): Promise<T> {
 }
 
 describe('dependency compatibility', () => {
-  it('pins the direct SDK and Zod dependencies', async () => {
+  it('pins the direct SDK, MCP, and Zod dependencies', async () => {
     const packageJson = await readJsonFile<PackageJson>('../package.json');
     expect(packageJson.dependencies?.['@anthropic-ai/claude-agent-sdk']).toBe('0.2.109');
+    expect(packageJson.dependencies?.['@modelcontextprotocol/sdk']).toBe('1.29.0');
     expect(packageJson.dependencies?.zod).toBe('4.4.3');
     expect(packageJson.dependencies).not.toHaveProperty('zod-to-json-schema');
   });
@@ -22,6 +23,7 @@ describe('dependency compatibility', () => {
     const lock = await readJsonFile<PackageLock>('../package-lock.json');
     const root = lock.packages?.[''];
     expect(root?.dependencies?.['@anthropic-ai/claude-agent-sdk']).toBe('0.2.109');
+    expect(root?.dependencies?.['@modelcontextprotocol/sdk']).toBe('1.29.0');
     expect(root?.dependencies?.zod).toBe('4.4.3');
     expect(root?.dependencies).not.toHaveProperty('zod-to-json-schema');
   });

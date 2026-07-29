@@ -1,7 +1,7 @@
 {
-  "name": "claude-multiagent-code-review-starter",
+  "name": "claude-code-multi-agent-orchestrator",
   "version": "1.0.0",
-  "description": "Starter project for building a multi-agent code review system using Claude Agent SDK",
+  "description": "Multi-agent pull request code review orchestrator built with the Claude Agent SDK",
   "type": "module",
   "main": "dist/main.js",
   "module": "dist/main.js",
@@ -35,7 +35,7 @@
   "license": "ISC",
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.2.109",
-    "@modelcontextprotocol/sdk": "^1.23.0",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "dotenv": "^16.0.0",
     "winston": "^3.11.0",
     "zod": "4.4.3"

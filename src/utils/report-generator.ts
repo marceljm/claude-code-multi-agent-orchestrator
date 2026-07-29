@@ -1,5 +1,9 @@
 import type { ReviewReport } from '../types/report-types.js';
 
+function normalizeRenderedText(content: string): string {
+  return content.replace(/[ \t]+$/gm, '').trimEnd() + '\n';
+}
+
 /**
  * Report Generator
  * Converts ReviewReport to various output formats (Markdown, HTML, JSON)
@@ -55,7 +59,7 @@ ${refactorList || '  None found'}
 ${refactorings.suggestions.length > 2 ? `\n  *...and ${refactorings.suggestions.length - 2} more*` : ''}`;
     }).join('\n\n---\n\n');
 
-    return `# 🔍 Code Review Report
+    return normalizeRenderedText(`# 🔍 Code Review Report
 
 ## Summary
 
@@ -77,15 +81,14 @@ ${formattedFiles}
 
 ---
 
-*Generated at ${report.metadata.analyzedAt} • Duration: ${report.metadata.duration}ms*
-`;
+*Generated at ${report.metadata.analyzedAt} • Duration: ${report.metadata.duration}ms*`);
   }
 
   /**
    * Generate an HTML report for web display
    */
   generateHTMLReport(report: ReviewReport): string {
-    const { summary, recommendations, metadata } = report;
+    const { summary, recommendations, metadata, fileReviews } = report;
 
     const recList = recommendations.slice(0, 5).map(r => `
       <li class="rec-${r.priority}">
@@ -95,7 +98,11 @@ ${formattedFiles}
       </li>
     `).join('');
 
-    return `<!DOCTYPE html>
+    const reviewedFileItems = fileReviews.map(review =>
+      `    <li><code>${review.file}</code></li>`
+    ).join('\n') || '    <li>No files reviewed.</li>';
+
+    return normalizeRenderedText(`<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -168,11 +175,16 @@ ${formattedFiles}
   <h2>🎯 Top Recommendations</h2>
   <ul>${recList || '<li>No recommendations at this time.</li>'}</ul>
 
+  <h2>📁 Reviewed Files</h2>
+  <ul>
+${reviewedFileItems}
+  </ul>
+
   <footer>
     Generated at ${metadata.analyzedAt} • Duration: ${metadata.duration}ms
   </footer>
 </body>
-</html>`;
+</html>`);
   }
 
   /**

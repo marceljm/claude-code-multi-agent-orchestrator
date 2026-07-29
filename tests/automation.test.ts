@@ -112,12 +112,31 @@ describe('automated offline test pipeline', () => {
       /timeout-minutes:\s*10/
     );
 
-    expect(workflow).toMatch(
-      /RUN_LIVE_INTEGRATION:\s*["']0["']/
-    );
+    const disabledLiveGates = [
+      'RUN_LIVE_INTEGRATION',
+      'RUN_LIVE_CLI_INTEGRATION',
+      'RUN_LIVE_REPORT_GENERATION',
+      'RUN_LIVE_ANTHROPIC_CREDIT_CHECK',
+      'RUN_LIVE_ANTHROPIC_STRUCTURED_OUTPUT'
+    ];
 
-    expect(workflow).toMatch(
-      /RUN_LIVE_CLI_INTEGRATION:\s*["']0["']/
+    for (
+      const liveGate
+      of disabledLiveGates
+    ) {
+      expect(
+        workflow
+      ).toMatch(
+        new RegExp(
+          `${liveGate}:\\s*["']0["']`
+        )
+      );
+    }
+
+    expect(
+      workflow
+    ).not.toMatch(
+      /RUN_LIVE_[A-Z_]+:\s*["']?1["']?/
     );
 
     expect(workflow).toMatch(
