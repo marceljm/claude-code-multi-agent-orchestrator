@@ -13,12 +13,7 @@ describe('codeQualityAnalyzer', () => {
   });
 
   it('describes when the orchestrator should invoke it', () => {
-    expect(codeQualityAnalyzer.description.toLowerCase()).toContain(
-      'code quality'
-    );
-    expect(codeQualityAnalyzer.description.toLowerCase()).toContain(
-      'analy'
-    );
+    for (const text of ['exactly once', 'all assigned changed files', 'security', 'performance', 'maintainability', 'applicable']) expect(codeQualityAnalyzer.description.toLowerCase()).toContain(text);
   });
 
   it('does not allow tools outside its read-only analysis toolset', () => {

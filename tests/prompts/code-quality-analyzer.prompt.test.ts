@@ -15,16 +15,11 @@ describe('CODE_QUALITY_ANALYZER_PROMPT', () => {
     expect(CODE_QUALITY_ANALYZER_PROMPT).toContain('best practices');
   });
 
-  it('requires Skill initialization before analysis', () => {
-    expect(CODE_QUALITY_ANALYZER_PROMPT).toContain(
-      'Your first tool action must be a Skill invocation'
-    );
-    expect(CODE_QUALITY_ANALYZER_PROMPT).toContain(
-      'javascript-best-practices'
-    );
-    expect(CODE_QUALITY_ANALYZER_PROMPT).toContain(
-      'Do not return the final JSON before this Skill invocation completes'
-    );
+  it('requires conditional Skill initialization before analysis', () => {
+    expect(CODE_QUALITY_ANALYZER_PROMPT).toContain('Your first tool actions must initialize the required Skills');
+    for (const text of ['Invoke security-analysis exactly once for every review', 'Invoke typescript-patterns exactly once', 'Invoke javascript-best-practices exactly once', 'Complete every applicable Skill invocation before using Read, Grep, or Glob']) expect(CODE_QUALITY_ANALYZER_PROMPT).toContain(text);
+    expect(CODE_QUALITY_ANALYZER_PROMPT).toContain('Do not invoke an irrelevant language skill');
+    expect(CODE_QUALITY_ANALYZER_PROMPT).toMatch(/Do not invoke any required Skill\s+more than once/);
   });
 
   it('documents every required output field', () => {
@@ -70,13 +65,12 @@ describe('CODE_QUALITY_ANALYZER_PROMPT', () => {
 
   it('requires JSON-only structured output', () => {
     expect(CODE_QUALITY_ANALYZER_PROMPT).toContain(
-      'Return exactly one JSON object'
+      'Return exactly one JSON array'
     );
-    expect(CODE_QUALITY_ANALYZER_PROMPT).toContain(
-      'Do not wrap the JSON in Markdown'
-    );
+    expect(CODE_QUALITY_ANALYZER_PROMPT).toMatch(/not wrap the array in Markdown/i);
     expect(CODE_QUALITY_ANALYZER_PROMPT).toContain(
       'CodeQualityResultSchema'
     );
+    for (const text of ['exactly one CodeQualityResultSchema object for every changed file', 'same order as the bundle', 'Do not omit files', 'Do not duplicate files']) expect(CODE_QUALITY_ANALYZER_PROMPT).toContain(text);
   });
 });

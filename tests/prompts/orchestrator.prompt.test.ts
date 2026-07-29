@@ -59,68 +59,40 @@ describe('buildOrchestratorPrompt', () => {
     );
   });
 
-  it('loads javascript-best-practices before delegation', () => {
-    expect(prompt).toContain(
-      'Invoke the javascript-best-practices skill through the Skill tool'
-    );
-
-    expect(prompt).toContain(
-      'The Skill invocation is mandatory'
-    );
-
-    expect(prompt).toContain(
-      'Complete the Skill invocation before starting any Task or Agent invocation'
-    );
-
-    expect(prompt).toContain(
-      'Do not delegate Skill loading to a subagent'
-    );
-
-    expect(prompt).toContain(
-      'Pass the loaded javascript-best-practices guidance to the code-quality-analyzer agent'
-    );
+  it('keeps Skill ownership inside the code-quality specialist', () => {
+    expect(prompt).toContain('Do not invoke the Skill tool in the orchestrator');
+    expect(prompt).toContain('The code-quality specialist owns all Skill initialization');
+    expect(prompt).toContain('The test-coverage and refactoring specialists do not use Skills');
   });
 
-  it('explicitly invokes all three named subagents through Task', () => {
-    expect(prompt).toContain(
-      'Use the Task tool to invoke the code-quality-analyzer agent'
-    );
-    expect(prompt).toContain(
-      'Use the Task tool to invoke the test-coverage-analyzer agent'
-    );
-    expect(prompt).toContain(
-      'Use the Task tool to invoke the refactoring-suggester agent'
-    );
+  it('uses exactly three PR-level specialist calls', () => {
+    expect(prompt).toContain('Invoke exactly three specialized Task calls total for the complete pull request');
+    expect(prompt).toContain('Invoke code-quality-analyzer exactly once');
+    expect(prompt).toContain('Invoke test-coverage-analyzer exactly once');
+    expect(prompt).toContain('Invoke refactoring-suggester exactly once');
   });
 
   it('requires parallel subagent execution', () => {
     expect(prompt).toContain(
-      'Start all three Task invocations for a file in parallel'
+      'Start all three Task calls in one parallel tool-use batch'
     );
-    expect(prompt).toContain(
-      'Do not wait for one independent analysis to finish before starting another'
-    );
+    expect(prompt).toContain('Start all three Task calls in one parallel tool-use batch');
   });
 
   it('passes fetched code context to the subagents', () => {
     expect(prompt).toContain(
-      'Include the changed file path, patch, full content, and relevant repository context'
+      'Build one complete pull-request evidence bundle'
     );
-    expect(prompt).toContain(
-      'Do not instruct a subagent to fetch GitHub data itself'
-    );
+    for (const item of ['repository-relative file path', 'patch', 'full changed-file content', 'relevant surrounding source context', 'relevant existing test context']) expect(prompt).toContain(item);
+    expect(prompt).toContain('Pass the complete pull-request evidence bundle to each specialist');
+    expect(prompt).toContain('Do not invoke Task or Agent once per file');
+    expect(prompt).toContain('Do not repeatedly fetch or duplicate the same evidence');
   });
 
   it('fails the complete review when a required analysis fails', () => {
-    expect(prompt).toContain(
-      'Fail the complete review'
-    );
-    expect(prompt).toContain(
-      'Do not generate a partial ReviewReport'
-    );
-    expect(prompt).toContain(
-      'Do not fabricate a missing result'
-    );
+    expect(prompt.toLowerCase()).toContain('a specialist failure must fail the complete review');
+    expect(prompt.toLowerCase()).toMatch(/do not\s+generate a partial reviewreport/);
+    expect(prompt.toLowerCase()).toContain('do not fabricate missing results');
   });
 
   it('documents the complete ReviewReport structure', () => {

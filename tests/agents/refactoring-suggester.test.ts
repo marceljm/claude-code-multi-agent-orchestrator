@@ -20,23 +20,14 @@ describe('refactoringSuggester', () => {
   });
 
   it('has a description that identifies when it should run', () => {
-    expect(refactoringSuggester.description).toContain(
-      'refactoring opportunities'
-    );
-    expect(refactoringSuggester.description).toContain(
-      'modernization'
-    );
-    expect(refactoringSuggester.description).toContain(
-      'design-pattern improvements'
-    );
+    for (const text of ['exactly once', 'safe refactorings', 'all assigned changed files', 'one result per file']) expect(refactoringSuggester.description).toContain(text);
   });
 
   it('has only the required read-only analysis tools', () => {
     expect(refactoringSuggester.tools).toEqual([
       'Read',
       'Grep',
-      'Glob',
-      'Skill'
+      'Glob'
     ]);
   });
 

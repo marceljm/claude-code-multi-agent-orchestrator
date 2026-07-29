@@ -23,11 +23,11 @@ describe('TEST_COVERAGE_ANALYZER_PROMPT', () => {
     );
   });
 
-  it('instructs the agent to use Claude Skills', () => {
-    expect(TEST_COVERAGE_ANALYZER_PROMPT).toContain('Skill tool');
-    expect(TEST_COVERAGE_ANALYZER_PROMPT).toContain(
-      'javascript-best-practices'
-    );
+  it('uses supplied evidence and read-only tools for missing context', () => {
+    expect(TEST_COVERAGE_ANALYZER_PROMPT).toMatch(/primary\s+input/);
+    expect(TEST_COVERAGE_ANALYZER_PROMPT).toContain('Do not re-read every assigned file');
+    expect(TEST_COVERAGE_ANALYZER_PROMPT).toContain('specific missing context item');
+    expect(TEST_COVERAGE_ANALYZER_PROMPT).toMatch(/Do\s+not invoke another agent/);
   });
 
   it('documents every required output field', () => {
@@ -65,13 +65,12 @@ describe('TEST_COVERAGE_ANALYZER_PROMPT', () => {
 
   it('requires JSON-only structured output', () => {
     expect(TEST_COVERAGE_ANALYZER_PROMPT).toContain(
-      'Return exactly one JSON object'
+      'Return exactly one JSON array'
     );
-    expect(TEST_COVERAGE_ANALYZER_PROMPT).toContain(
-      'Do not wrap the JSON in Markdown'
-    );
+    expect(TEST_COVERAGE_ANALYZER_PROMPT).toMatch(/not wrap the array in Markdown/i);
     expect(TEST_COVERAGE_ANALYZER_PROMPT).toContain(
       'TestCoverageResultSchema'
     );
+    expect(TEST_COVERAGE_ANALYZER_PROMPT).toContain('same order as the bundle');
   });
 });

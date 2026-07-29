@@ -36,7 +36,7 @@ are recorded in
 
 ## Requirements
 
-- Node.js 18 or newer. Node.js 22.23.1 is used by CI.
+- Node.js 22.x. Node.js 22.23.1 is used by CI and recorded in .nvmrc.
 - npm, Git installed on `PATH`, GitHub access, and Udacity Vocareum, direct Anthropic, or AWS Bedrock access.
 - A GitHub token is recommended for higher limits and private repositories.
 

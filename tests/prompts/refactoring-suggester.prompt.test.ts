@@ -20,11 +20,10 @@ describe('REFACTORING_SUGGESTER_PROMPT', () => {
     expect(REFACTORING_SUGGESTER_PROMPT).toContain('benefits');
   });
 
-  it('instructs the agent to use Claude Skills', () => {
-    expect(REFACTORING_SUGGESTER_PROMPT).toContain('Skill tool');
-    expect(REFACTORING_SUGGESTER_PROMPT).toContain(
-      'javascript-best-practices'
-    );
+  it('uses supplied evidence and read-only tools for missing context', () => {
+    expect(REFACTORING_SUGGESTER_PROMPT).toMatch(/evidence supplied by the orchestrator as the primary\s+input/);
+    expect(REFACTORING_SUGGESTER_PROMPT).toContain('specific missing context');
+    expect(REFACTORING_SUGGESTER_PROMPT).toMatch(/Do\s+not invoke another agent/);
   });
 
   it('documents every required output field', () => {
@@ -61,13 +60,12 @@ describe('REFACTORING_SUGGESTER_PROMPT', () => {
 
   it('requires JSON-only structured output', () => {
     expect(REFACTORING_SUGGESTER_PROMPT).toContain(
-      'Return exactly one JSON object'
+      'Return exactly one JSON array'
     );
-    expect(REFACTORING_SUGGESTER_PROMPT).toContain(
-      'Do not wrap the JSON in Markdown'
-    );
+    expect(REFACTORING_SUGGESTER_PROMPT).toMatch(/not wrap the array in Markdown/i);
     expect(REFACTORING_SUGGESTER_PROMPT).toContain(
       'RefactoringSuggestionSchema'
     );
+    expect(REFACTORING_SUGGESTER_PROMPT).toContain('same order as the bundle');
   });
 });
