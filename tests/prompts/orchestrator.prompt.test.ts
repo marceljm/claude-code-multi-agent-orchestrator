@@ -59,10 +59,11 @@ describe('buildOrchestratorPrompt', () => {
     );
   });
 
-  it('keeps Skill ownership inside the code-quality specialist', () => {
+  it('exposes Skill to every specialist but not the orchestrator', () => {
     expect(prompt).toContain('Do not invoke the Skill tool in the orchestrator');
-    expect(prompt).toContain('The code-quality specialist owns all Skill initialization');
-    expect(prompt).toContain('The test-coverage and refactoring specialists do not use Skills');
+    expect(prompt).toContain('All three specialists receive the Skill tool');
+    expect(prompt).toContain('The code-quality specialist owns mandatory Skill initialization');
+    expect(prompt).toContain('The test-coverage and refactoring specialists may use relevant installed Skills');
   });
 
   it('uses exactly three PR-level specialist calls', () => {

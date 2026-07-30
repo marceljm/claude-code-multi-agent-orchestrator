@@ -27,18 +27,23 @@ Stored at `.claude/skills/security-analysis/SKILL.md`.
 
 ## Runtime use
 
-The code-quality analyzer is the only specialist with access to the `Skill`
-tool. Security guidance is required for every review. TypeScript guidance is
-required for `.ts`, `.tsx`, `.mts`, and `.cts` files. JavaScript guidance is
-required for `.js`, `.jsx`, `.mjs`, and `.cjs` files. Each applicable skill is
+All three required specialists include the `Skill` tool and can access this
+repository's Claude skills library.
+
+The code-quality analyzer has mandatory Skill-selection rules. Security
+guidance is required for every review. TypeScript guidance is required for
+`.ts`, `.tsx`, `.mts`, and `.cts` files. JavaScript guidance is required for
+`.js`, `.jsx`, `.mjs`, and `.cjs` files. Each applicable code-quality Skill is
 invoked exactly once before analysis begins.
 
 Security guidance is required for every review.
 TypeScript guidance is required when TypeScript files are present.
 JavaScript guidance is required when JavaScript files are present.
 
-The test-coverage analyzer and refactoring suggester do not use skills. Their
-tool sets remain intentionally smaller.
+The test-coverage analyzer and refactoring suggester may consult relevant
+installed Skills when useful for their assigned role. They remain read-only,
+must not invoke another agent, and must still return exactly one result for
+every assigned changed file.
 
 ## Skill format
 
@@ -60,6 +65,6 @@ Expected guidance or response format.
 
 ## Adding another skill
 
-Add a new directory under `.claude/skills/`, create its `SKILL.md`, expose the
-`Skill` tool only to the agent that needs it, and add focused tests for the
-prompt and tool contract.
+Add a new directory under `.claude/skills/`, create its `SKILL.md`, document
+which specialists should use it, and add focused tests for the prompt and tool
+contract.

@@ -73,15 +73,20 @@ subagent analyses.
 When no supported JavaScript or TypeScript file changed, do not invent an
 ESLint invocation.
 
-### 3. Keep Skill ownership inside the code-quality specialist
+### 3. Keep Skill use inside specialized agents
 
 Do not invoke the Skill tool in the orchestrator.
 
-The code-quality specialist owns all Skill initialization. It receives the
-complete changed-file list and selects security-analysis plus the applicable
-TypeScript and JavaScript guidance.
+All three specialists receive the Skill tool so every required subagent can
+access the repository's Claude skills library.
 
-The test-coverage and refactoring specialists do not use Skills.
+The code-quality specialist owns mandatory Skill initialization. It receives
+the complete changed-file list and must select security-analysis plus the
+applicable TypeScript and JavaScript guidance.
+
+The test-coverage and refactoring specialists may use relevant installed Skills
+when useful for their assigned roles. Skill use must not create additional Task
+or Agent calls, and each specialist must remain within its role.
 
 ### 4. Build one complete pull-request evidence bundle
 

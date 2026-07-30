@@ -9,7 +9,7 @@ import {
 export const refactoringSuggester:
   AgentDefinition = {
     description:
-      'Invoke this agent exactly once to propose safe refactorings for all assigned changed files and return one result per file.',
+      'Invoke this agent exactly once to propose safe refactorings for all assigned changed files, use relevant Claude Skills when useful, and return one result per file.',
 
     prompt:
       REFACTORING_SUGGESTER_PROMPT,
@@ -17,7 +17,8 @@ export const refactoringSuggester:
     tools: [
       'Read',
       'Grep',
-      'Glob'
+      'Glob',
+      'Skill'
     ],
 
     model:

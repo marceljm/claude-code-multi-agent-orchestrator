@@ -26,11 +26,12 @@ describe('testCoverageAnalyzer', () => {
     for (const text of ['exactly once', 'all assigned changed files', 'one result per file']) expect(testCoverageAnalyzer.description).toContain(text);
   });
 
-  it('has only the required read-only analysis tools', () => {
+  it('has the required read-only analysis and Skill tools', () => {
     expect(testCoverageAnalyzer.tools).toEqual([
       'Read',
       'Grep',
-      'Glob'
+      'Glob',
+      'Skill'
     ]);
   });
 

@@ -23,11 +23,12 @@ describe('refactoringSuggester', () => {
     for (const text of ['exactly once', 'safe refactorings', 'all assigned changed files', 'one result per file']) expect(refactoringSuggester.description).toContain(text);
   });
 
-  it('has only the required read-only analysis tools', () => {
+  it('has the required read-only analysis and Skill tools', () => {
     expect(refactoringSuggester.tools).toEqual([
       'Read',
       'Grep',
-      'Glob'
+      'Glob',
+      'Skill'
     ]);
   });
 

@@ -168,7 +168,7 @@ describe(
     );
 
     it(
-      'keeps the Skill only where it is required',
+      'gives every specialist read-only Skill access',
       () => {
         expect(
           codeQualityAnalyzer.tools
@@ -176,11 +176,11 @@ describe(
 
         expect(
           testCoverageAnalyzer.tools
-        ).not.toContain('Skill');
+        ).toContain('Skill');
 
         expect(
           refactoringSuggester.tools
-        ).not.toContain('Skill');
+        ).toContain('Skill');
 
         expect(
           TEST_COVERAGE_ANALYZER_PROMPT

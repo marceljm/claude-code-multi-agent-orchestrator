@@ -9,7 +9,7 @@ import {
 export const testCoverageAnalyzer:
   AgentDefinition = {
     description:
-      'Invoke this agent exactly once to analyze test coverage for all assigned changed files and return one result per file.',
+      'Invoke this agent exactly once to analyze test coverage for all assigned changed files, use relevant Claude Skills when useful, and return one result per file.',
 
     prompt:
       TEST_COVERAGE_ANALYZER_PROMPT,
@@ -17,7 +17,8 @@ export const testCoverageAnalyzer:
     tools: [
       'Read',
       'Grep',
-      'Glob'
+      'Glob',
+      'Skill'
     ],
 
     model:

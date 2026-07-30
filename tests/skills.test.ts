@@ -111,7 +111,7 @@ describe(
     );
 
     it(
-      'wires all required skills into only the code-quality specialist',
+      'wires Skill access into all three required specialists',
       () => {
         expect(codeQualityAnalyzer.tools).toEqual([
           'Read',
@@ -119,8 +119,32 @@ describe(
           'Glob',
           'Skill'
         ]);
-        expect(testCoverageAnalyzer.tools).not.toContain('Skill');
-        expect(refactoringSuggester.tools).not.toContain('Skill');
+        expect(testCoverageAnalyzer.tools).toEqual([
+          'Read',
+          'Grep',
+          'Glob',
+          'Skill'
+        ]);
+        expect(refactoringSuggester.tools).toEqual([
+          'Read',
+          'Grep',
+          'Glob',
+          'Skill'
+        ]);
+
+        for (
+          const agent
+          of [
+            codeQualityAnalyzer,
+            testCoverageAnalyzer,
+            refactoringSuggester
+          ]
+        ) {
+          expect(agent.tools).toContain('Skill');
+          expect(agent.tools).not.toContain('Write');
+          expect(agent.tools).not.toContain('Edit');
+          expect(agent.tools).not.toContain('Bash');
+        }
 
         for (
           const skill
@@ -177,7 +201,7 @@ describe(
     );
 
     it(
-      'keeps skill initialization inside the code-quality specialist',
+      'keeps Skill invocation out of the orchestrator',
       () => {
         const orchestratorPrompt =
           buildOrchestratorPrompt(
@@ -201,11 +225,17 @@ describe(
           'Invoke security-analysis'
         );
         expect(orchestratorPrompt).toContain(
-          'The code-quality specialist owns all Skill initialization.'
+          'The code-quality specialist owns mandatory Skill initialization'
+        );
+        expect(orchestratorPrompt).toContain(
+          'All three specialists receive the Skill tool'
+        );
+        expect(orchestratorPrompt).toContain(
+          'The test-coverage and refactoring specialists may use relevant installed Skills'
         );
 
         const requiredSections = [
-          '### 3. Keep Skill ownership inside the code-quality specialist',
+          '### 3. Keep Skill use inside specialized agents',
           '### 4. Build one complete pull-request evidence bundle',
           '### 5. Invoke exactly three PR-level specialists'
         ];

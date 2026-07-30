@@ -135,15 +135,19 @@ Produces evidence-based refactoring opportunities with impact and examples.
 
 ## Claude Skills
 
-The code-quality specialist has access to three repository skills:
+All three specialists include the `Skill` tool, allowing every required
+subagent to access the repository's Claude skills library.
+
+The code-quality specialist is required to use these repository skills:
 
 - `security-analysis` for every assigned changed file.
 - `typescript-patterns` for `.ts`, `.tsx`, `.mts`, and `.cts` files.
 - `javascript-best-practices` for `.js`, `.jsx`, `.mjs`, and `.cjs` files.
 
-Each applicable skill is invoked exactly once before code analysis. The
-test-coverage and refactoring specialists intentionally do not receive the
-`Skill` tool.
+Each applicable code-quality Skill is invoked exactly once before code
+analysis. The test-coverage and refactoring specialists may consult relevant
+installed Skills when useful for their role, while remaining read-only and
+within their assigned responsibility.
 
 ## Runtime rate limiting
 
