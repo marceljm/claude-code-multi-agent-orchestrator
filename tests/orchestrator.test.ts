@@ -300,6 +300,43 @@ function createOrchestrator(
 describe('CodeReviewOrchestrator', () => {
   describe('structured lifecycle logging', () => {
     it(
+      'uses a 15-minute default review timeout',
+      async () => {
+        const logging = createRecordingLogger();
+
+        const {
+          queryFn
+        } = createSuccessfulQueryMock();
+
+        await createOrchestrator(
+          queryFn,
+          {
+            logger: logging.logger
+          }
+        ).reviewPullRequest(
+          'airaamane',
+          'simple-todo-app',
+          2
+        );
+
+        expect(
+          logging.entries.find(
+            entry =>
+              entry.metadata.event ===
+              'review.started'
+          )
+        ).toMatchObject({
+          metadata: {
+            event:
+              'review.started',
+            timeoutMs:
+              900000
+          }
+        });
+      }
+    );
+
+    it(
       'logs the complete successful review lifecycle without source or report bodies',
       async () => {
       const logging = createRecordingLogger();

@@ -169,8 +169,8 @@ inject an isolated `RateLimiter` and a different positive
 
 ## Retry and timeout safety
 
-Each Agent SDK execution attempt has a five-minute timeout. A timed-out attempt
-is aborted through its SDK `AbortController`.
+Each Agent SDK execution attempt has a 15-minute default timeout. A timed-out
+attempt is aborted through its SDK `AbortController`.
 
 A transient startup failure may be retried only when the SDK has not emitted a
 stream message and no specialist delegation has begun. The default is two
