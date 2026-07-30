@@ -10,43 +10,51 @@
       "codeQuality": {
         "file": ".gitignore",
         "issues": [],
-        "overallScore": 100,
-        "summary": "Configuration file with appropriate entries for build artifacts and temporary files."
+        "overallScore": 95,
+        "summary": "Standard gitignore file with appropriate entries for temporary files. No quality issues identified."
       },
       "testCoverage": {
         "file": ".gitignore",
         "hasTests": false,
         "testFiles": [],
         "untestedPaths": [],
-        "coverageEstimate": 0,
-        "summary": "Configuration file. No testing applicable."
+        "coverageEstimate": 100,
+        "summary": "Configuration file - not testable code, no tests needed"
       },
       "refactorings": {
         "file": ".gitignore",
         "suggestions": [],
-        "summary": "No refactoring needed. This is a configuration file with simple, clear entries. No duplication or clarity issues present."
+        "summary": "No refactoring needed. The .gitignore file follows standard conventions for Node.js projects with appropriate patterns for node_modules, coverage, and build artifacts."
       }
     },
     {
       "file": "README.md",
       "codeQuality": {
         "file": "README.md",
-        "issues": [],
-        "overallScore": 100,
-        "summary": "Well-written documentation covering features, structure, installation, and security practices clearly."
+        "issues": [
+          {
+            "line": 33,
+            "severity": "low",
+            "category": "maintainability",
+            "description": "The security claims about parameterized queries and input sanitization are accurate for the implementation, but the README doesn't mention the mock database limitation which affects real-world security guarantees.",
+            "suggestion": "Add a note clarifying that the current implementation uses a mock database and would need a real database driver for production use."
+          }
+        ],
+        "overallScore": 88,
+        "summary": "Well-structured documentation with clear installation and usage instructions. Minor improvement needed to clarify the mock implementation status."
       },
       "testCoverage": {
         "file": "README.md",
         "hasTests": false,
         "testFiles": [],
         "untestedPaths": [],
-        "coverageEstimate": 0,
-        "summary": "Documentation file. No testing applicable."
+        "coverageEstimate": 100,
+        "summary": "Documentation file - not testable code, no tests needed"
       },
       "refactorings": {
         "file": "README.md",
         "suggestions": [],
-        "summary": "No refactoring needed. The documentation is clear, well-structured, and appropriately documents the application features and security practices."
+        "summary": "No refactoring needed. Documentation is clear, well-structured, and provides adequate usage examples and setup instructions."
       }
     },
     {
@@ -54,43 +62,78 @@
       "codeQuality": {
         "file": "jest.config.js",
         "issues": [],
-        "overallScore": 100,
-        "summary": "Properly configured Jest setup with ts-jest preset, correct test paths, and coverage configuration."
+        "overallScore": 95,
+        "summary": "Standard Jest configuration for TypeScript projects. Properly configured with ts-jest preset, appropriate test matching, and coverage collection settings."
       },
       "testCoverage": {
         "file": "jest.config.js",
         "hasTests": false,
         "testFiles": [],
         "untestedPaths": [],
-        "coverageEstimate": 0,
-        "summary": "Jest configuration file. No testing applicable."
+        "coverageEstimate": 100,
+        "summary": "Test configuration file - not testable code, no tests needed"
       },
       "refactorings": {
         "file": "jest.config.js",
-        "suggestions": [],
-        "summary": "No refactoring needed. The Jest configuration is minimal, readable, and follows standard conventions. All settings are appropriate for a TypeScript project."
+        "suggestions": [
+          {
+            "type": "modernize",
+            "location": "module.exports, line 1",
+            "impact": "low",
+            "description": "Convert to ES module syntax for consistency with TypeScript codebase",
+            "before": "module.exports = {\n  preset: 'ts-jest',\n  testEnvironment: 'node',\n};",
+            "after": "export default {\n  preset: 'ts-jest',\n  testEnvironment: 'node',\n};",
+            "benefits": "Aligns with modern JavaScript module syntax and matches the TypeScript codebase conventions, improving consistency across configuration files."
+          }
+        ],
+        "summary": "Minor modernization opportunity to use ES module syntax instead of CommonJS for better consistency with the TypeScript project."
       }
     },
     {
       "file": "package.json",
       "codeQuality": {
         "file": "package.json",
-        "issues": [],
-        "overallScore": 100,
-        "summary": "Complete package configuration with appropriate dev dependencies for TypeScript, Jest, and testing."
+        "issues": [
+          {
+            "line": 1,
+            "severity": "medium",
+            "category": "security",
+            "description": "No dependency version pinning or lock file strategy specified. Using caret ranges (^) for devDependencies allows automatic minor/patch updates that could introduce breaking changes or vulnerabilities.",
+            "suggestion": "Consider using exact versions or tilde ranges for critical dependencies, and ensure package-lock.json or yarn.lock is committed to the repository for reproducible builds."
+          },
+          {
+            "line": 1,
+            "severity": "low",
+            "category": "maintainability",
+            "description": "Missing repository, bugs, and homepage fields which are useful for package discovery and maintenance.",
+            "suggestion": "Add repository, bugs, and homepage fields to improve package metadata and make it easier for contributors to find project resources."
+          }
+        ],
+        "overallScore": 82,
+        "summary": "Basic package.json with appropriate dependencies for a TypeScript/Jest project. Could benefit from stricter dependency management and additional metadata fields."
       },
       "testCoverage": {
         "file": "package.json",
         "hasTests": false,
         "testFiles": [],
         "untestedPaths": [],
-        "coverageEstimate": 0,
-        "summary": "Package manifest. No testing applicable."
+        "coverageEstimate": 100,
+        "summary": "Package configuration file - not testable code, no tests needed"
       },
       "refactorings": {
         "file": "package.json",
-        "suggestions": [],
-        "summary": "No refactoring needed. The package configuration is lean and well-organized with appropriate dev dependencies for a TypeScript and Jest setup."
+        "suggestions": [
+          {
+            "type": "modernize",
+            "location": "scripts section, line 6",
+            "impact": "low",
+            "description": "Add a script for running tests in watch mode during development",
+            "before": "\"scripts\": {\n  \"test\": \"jest\",\n  \"build\": \"tsc\"\n}",
+            "after": "\"scripts\": {\n  \"test\": \"jest\",\n  \"test:watch\": \"jest --watch\",\n  \"build\": \"tsc\"\n}",
+            "benefits": "Improves developer experience by providing a convenient way to run tests continuously during development, which is a common workflow for TDD."
+          }
+        ],
+        "summary": "Minor enhancement to add a test:watch script for improved developer workflow, though the current configuration is functional."
       }
     },
     {
@@ -99,15 +142,36 @@
         "file": "src/database.ts",
         "issues": [
           {
-            "line": 14,
-            "severity": "medium",
+            "line": 15,
+            "severity": "high",
             "category": "bug-risk",
-            "description": "The MockDatabase.query() method always returns an empty array regardless of input. This stub implementation will not properly support integration testing or validate that database operations work correctly with actual data.",
-            "suggestion": "Implement the mock to store and retrieve data based on SQL operations. For example, handle INSERT, SELECT, UPDATE, and DELETE operations to maintain an in-memory data structure that simulates actual database behavior."
+            "description": "The MockDatabase.query method ignores both the sql parameter and params parameter, always returning an empty array. This makes the mock non-functional for testing actual database operations.",
+            "suggestion": "Implement a basic in-memory storage mechanism using the data Map field, or at minimum, document that this is an intentionally non-functional stub requiring proper implementation."
+          },
+          {
+            "line": 6,
+            "severity": "medium",
+            "category": "best-practice",
+            "description": "The Database interface uses 'any[]' for both params and return type, losing type safety. This prevents compile-time detection of incorrect query parameter types or result handling.",
+            "suggestion": "Use generic types for the return value (e.g., 'query<T = any>(sql: string, params?: unknown[]): Promise<T[]>') to enable type-safe database operations while maintaining flexibility."
+          },
+          {
+            "line": 13,
+            "severity": "low",
+            "category": "maintainability",
+            "description": "The private data field in MockDatabase is initialized but never used, suggesting incomplete implementation.",
+            "suggestion": "Either implement basic CRUD operations using the data Map, or remove the unused field and add a clear TODO comment explaining the implementation needs."
+          },
+          {
+            "line": 20,
+            "severity": "info",
+            "category": "maintainability",
+            "description": "Exporting a singleton instance (db) creates global mutable state that can make testing difficult and create coupling between modules.",
+            "suggestion": "Consider using dependency injection by exporting the MockDatabase class and allowing consumers to create their own instances, or provide a factory function for creating database instances."
           }
         ],
-        "overallScore": 75,
-        "summary": "Database interface is well-defined with proper TypeScript, but the mock implementation is non-functional and will not support realistic testing."
+        "overallScore": 58,
+        "summary": "Database abstraction layer with significant implementation gaps. The mock database is non-functional and the interface lacks type safety. Requires completion before production use."
       },
       "testCoverage": {
         "file": "src/database.ts",
@@ -115,61 +179,116 @@
         "testFiles": [],
         "untestedPaths": [
           {
-            "type": "function",
-            "location": "MockDatabase.query, line 12",
-            "priority": "medium",
-            "reasoning": "The MockDatabase class and its query method are implemented but never tested. While currently returning an empty array, this is the database abstraction layer that all other functions depend on.",
-            "suggestedTest": "Add tests verifying MockDatabase.query returns the expected structure and handles parameterized queries correctly"
+            "type": "class",
+            "location": "MockDatabase, line 20",
+            "priority": "high",
+            "reasoning": "MockDatabase class has no direct tests. While it may be exercised indirectly through todo.ts integration tests, the class methods (create, getAll, getById, update, delete) should have unit tests to verify correct Map operations, edge cases like updating non-existent todos, and return value contracts",
+            "suggestedTest": "Add unit tests for MockDatabase: test create adds to map, getAll returns array of values, getById returns null for missing IDs, update only modifies existing todos, delete returns true/false correctly"
           },
           {
-            "type": "class",
-            "location": "MockDatabase, line 11",
+            "type": "edge-case",
+            "location": "MockDatabase.update, line 31",
             "priority": "medium",
-            "reasoning": "MockDatabase class implementation is untested. Tests should verify the database interface implementation and data handling.",
-            "suggestedTest": "Add unit tests for MockDatabase covering query execution and parameter binding"
+            "reasoning": "The update method silently fails when the ID doesn't exist (no todo is updated, no error thrown). This behavior should be explicitly tested to ensure it's intentional",
+            "suggestedTest": "Test that MockDatabase.update does nothing when called with non-existent ID, and verify the todos map is unchanged"
+          },
+          {
+            "type": "edge-case",
+            "location": "MockDatabase.getById, line 28",
+            "priority": "low",
+            "reasoning": "Should verify that getById correctly returns null for non-existent IDs, not just falsy values",
+            "suggestedTest": "Test MockDatabase.getById with non-existent ID returns exactly null"
           }
         ],
         "coverageEstimate": 0,
-        "summary": "Database interface module has no test coverage. The MockDatabase implementation is untested and represents a critical dependency for all todo operations."
+        "summary": "MockDatabase implementation has no tests. All methods are untested including create, getAll, getById, update, and delete operations"
       },
       "refactorings": {
         "file": "src/database.ts",
         "suggestions": [
           {
             "type": "simplify",
-            "location": "MockDatabase.query method, lines 11-14",
+            "location": "MockDatabase.query, line 7",
             "impact": "low",
-            "description": "The MockDatabase.query method has an empty implementation that always returns an empty array, making it misleading. Either implement basic mock behavior or document why it remains unimplemented.",
-            "before": "  async query(sql: string, params: any[] = []): Promise<any[]> {\n    // Simple mock implementation\n    return [];\n  }",
-            "after": "  async query(sql: string, params: any[] = []): Promise<any[]> {\n    // TODO: Implement mock database behavior or replace with a real database\n    console.warn('MockDatabase.query called but not implemented');\n    return [];\n  }",
-            "benefits": "Makes the limitation of the mock database more explicit to developers, preventing accidental reliance on unimplemented functionality during development."
+            "description": "Remove unused parameters from MockDatabase implementation since it always returns empty array",
+            "before": "async query(sql: string, params: any[] = []): Promise<any[]> {\n  return [];\n}",
+            "after": "async query(_sql: string, _params: any[] = []): Promise<any[]> {\n  return [];\n}",
+            "benefits": "Makes it explicit that the mock implementation intentionally ignores parameters, improving code readability and preventing linter warnings about unused variables."
+          },
+          {
+            "type": "pattern-improvement",
+            "location": "MockDatabase class, line 5",
+            "impact": "medium",
+            "description": "Add basic implementation to MockDatabase for more realistic testing instead of always returning empty arrays",
+            "before": "class MockDatabase implements Database {\n  private data: Map<string, any[]> = new Map();\n  async query(sql: string, params: any[] = []): Promise<any[]> {\n    return [];\n  }\n}",
+            "after": "class MockDatabase implements Database {\n  private todos: Todo[] = [];\n  \n  async query(sql: string, params: any[] = []): Promise<any[]> {\n    if (sql.startsWith('INSERT')) {\n      const [id, title, description, completed, createdAt] = params;\n      this.todos.push({ id, title, description, completed, createdAt });\n      return [];\n    }\n    if (sql.startsWith('SELECT * FROM todos WHERE id')) {\n      return this.todos.filter(t => t.id === params[0]);\n    }\n    if (sql.startsWith('SELECT')) {\n      return [...this.todos].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());\n    }\n    if (sql.startsWith('UPDATE')) {\n      const todo = this.todos.find(t => t.id === params[1]);\n      if (todo) todo.completed = params[0];\n      return [];\n    }\n    if (sql.startsWith('DELETE')) {\n      this.todos = this.todos.filter(t => t.id !== params[0]);\n      return [];\n    }\n    return [];\n  }\n}",
+            "benefits": "Enables actual integration testing of CRUD operations without external dependencies, making tests more meaningful and catching bugs that occur from database interaction logic."
           }
         ],
-        "summary": "The MockDatabase class has a minimal implementation that unconditionally returns empty results. This should be clarified to indicate it is a placeholder awaiting implementation or database integration."
+        "summary": "The mock database could be enhanced to provide realistic test behavior instead of returning empty arrays, and unused parameters should be prefixed with underscore to indicate intentional non-use."
       }
     },
     {
       "file": "src/todo.test.ts",
       "codeQuality": {
         "file": "src/todo.test.ts",
-        "issues": [],
-        "overallScore": 100,
-        "summary": "Comprehensive test suite with clear test cases covering validation edge cases, sanitization, and XSS prevention. Tests are well-organized and properly structured."
+        "issues": [
+          {
+            "line": 1,
+            "severity": "medium",
+            "category": "maintainability",
+            "description": "Tests only cover input validation and sanitization functions but don't test the database operations (createTodo, getAllTodos, getTodoById, updateTodoStatus, deleteTodo), resulting in incomplete test coverage of critical functionality.",
+            "suggestion": "Add integration tests that mock the database module and verify that CRUD operations correctly call db.query with expected SQL and parameters. Consider using jest.mock() to mock the database module."
+          },
+          {
+            "line": 54,
+            "severity": "low",
+            "category": "best-practice",
+            "description": "The sanitizeInput test checks for '&#039;' using toContain, but doesn't verify the complete sanitized output, making the test less precise.",
+            "suggestion": "Use toBe() with the complete expected output: expect(sanitized).toBe('It&#039;s a test') to ensure full correctness of the sanitization."
+          },
+          {
+            "line": 1,
+            "severity": "info",
+            "category": "maintainability",
+            "description": "Missing test cases for edge cases such as null/undefined inputs, numeric inputs to sanitizeInput, and boundary conditions for string lengths.",
+            "suggestion": "Add test cases for null/undefined inputs, non-string inputs (if TypeScript runtime validation is needed), and exact boundary values (200 and 1000 character strings)."
+          }
+        ],
+        "overallScore": 68,
+        "summary": "Tests cover validation and sanitization logic well but lack coverage of database operations and edge cases. Test suite needs expansion to cover CRUD operations and boundary conditions."
       },
       "testCoverage": {
         "file": "src/todo.test.ts",
-        "hasTests": true,
-        "testFiles": [
-          "src/todo.test.ts"
-        ],
+        "hasTests": false,
+        "testFiles": [],
         "untestedPaths": [],
         "coverageEstimate": 100,
-        "summary": "Test file itself. This file contains test implementations and is not subject to coverage analysis."
+        "summary": "Test file - contains tests, not subject to test coverage analysis"
       },
       "refactorings": {
         "file": "src/todo.test.ts",
-        "suggestions": [],
-        "summary": "No refactoring needed. The test file has good coverage of validation and sanitization logic with clear test descriptions and appropriate assertions."
+        "suggestions": [
+          {
+            "type": "pattern-improvement",
+            "location": "test structure, line 3",
+            "impact": "medium",
+            "description": "Add setup/teardown to reset database state between tests for isolation",
+            "before": "describe('Todo Functions', () => {\n  describe('validateTodoInput', () => {",
+            "after": "describe('Todo Functions', () => {\n  beforeEach(() => {\n    // Reset mock database state\n    jest.clearAllMocks();\n  });\n  \n  describe('validateTodoInput', () => {",
+            "benefits": "Ensures test isolation and prevents tests from affecting each other's state, making the test suite more reliable and easier to debug when tests fail."
+          },
+          {
+            "type": "simplify",
+            "location": "validateTodoInput tests, line 5-30",
+            "impact": "low",
+            "description": "Use test.each for parameterized validation tests to reduce duplication",
+            "before": "it('should return false for empty title', () => {\n  expect(validateTodoInput({ title: '', description: '' })).toBe(false);\n});\n\nit('should return false for whitespace-only title', () => {\n  expect(validateTodoInput({ title: '   ', description: '' })).toBe(false);\n});",
+            "after": "it.each([\n  ['empty title', { title: '', description: '' }],\n  ['whitespace-only title', { title: '   ', description: '' }],\n  ['title exceeding max length', { title: 'a'.repeat(201), description: '' }],\n  ['description exceeding max length', { title: 'Valid', description: 'a'.repeat(1001) }]\n])('should return false for %s', (_label, input) => {\n  expect(validateTodoInput(input)).toBe(false);\n});",
+            "benefits": "Reduces code duplication and makes it easier to add new validation test cases, improving maintainability and test coverage visibility."
+          }
+        ],
+        "summary": "Tests could benefit from better isolation with beforeEach hooks and parameterized tests to reduce duplication in validation testing."
       }
     },
     {
@@ -178,22 +297,78 @@
         "file": "src/todo.ts",
         "issues": [
           {
-            "line": 78,
-            "severity": "medium",
-            "category": "performance",
-            "description": "getAllTodos() retrieves all todos without pagination or limits. This could cause performance issues and excessive memory usage as the dataset grows, leading to slow response times and potential out-of-memory errors.",
-            "suggestion": "Add pagination parameters (limit and offset) to the function signature and apply them in the SQL query: 'SELECT * FROM todos ORDER BY created_at DESC LIMIT $1 OFFSET $2'. This allows clients to retrieve todos in manageable chunks."
+            "line": 70,
+            "severity": "critical",
+            "category": "security",
+            "description": "The parameterized query uses positional parameters ($1, $2, etc.) which is PostgreSQL syntax, but the MockDatabase implementation doesn't actually use these parameters. If deployed with a real database driver that doesn't support this syntax (e.g., MySQL uses ? placeholders), the application will fail or be vulnerable to SQL injection.",
+            "suggestion": "Document the expected database driver (PostgreSQL) in comments and ensure the MockDatabase properly validates parameter syntax. Consider abstracting the query builder to handle different database parameter styles."
           },
           {
-            "line": 117,
-            "severity": "info",
+            "line": 58,
+            "severity": "high",
             "category": "security",
-            "description": "The generateId() function uses Math.random() which is not cryptographically secure. While acceptable for demo/todo IDs, this could be problematic if IDs are used for security-sensitive purposes like session tokens or authentication identifiers.",
-            "suggestion": "For a production application, use crypto.randomUUID() or crypto.getRandomValues() for cryptographically secure ID generation. For this demo, a comment noting this limitation would suffice: // Note: Math.random() is acceptable for demo purposes but should be replaced with crypto.randomUUID() in production."
+            "description": "The sanitizeInput function only escapes HTML entities but doesn't protect against all XSS vectors. If this data is used in JavaScript contexts, CSS, or URLs, additional escaping is required. The function also doesn't handle Unicode normalization attacks.",
+            "suggestion": "Use a well-tested library like DOMPurify for HTML sanitization instead of manual escaping, or clearly document that this function is only for HTML content contexts. Consider adding Content-Security-Policy headers for defense-in-depth."
+          },
+          {
+            "line": 123,
+            "severity": "high",
+            "category": "bug-risk",
+            "description": "The generateId function uses Date.now() and Math.random() which can produce collisions in high-throughput scenarios. Date.now() has millisecond precision, and Math.random() is not cryptographically secure.",
+            "suggestion": "Use crypto.randomUUID() from Node.js crypto module for collision-resistant, cryptographically secure UUIDs, or use a battle-tested ID generation library like uuid or nanoid."
+          },
+          {
+            "line": 85,
+            "severity": "medium",
+            "category": "bug-risk",
+            "description": "The getAllTodos function doesn't include any pagination or limit clause. This could cause performance issues and memory exhaustion when the todos table grows large.",
+            "suggestion": "Add pagination parameters (offset, limit) to getAllTodos: 'export async function getAllTodos(limit = 100, offset = 0): Promise<Todo[]>' and update the query to include 'LIMIT $1 OFFSET $2'."
+          },
+          {
+            "line": 94,
+            "severity": "medium",
+            "category": "security",
+            "description": "getTodoById doesn't validate the id parameter format before using it in a query. While parameterized queries prevent SQL injection, invalid IDs could cause unnecessary database load or error handling issues.",
+            "suggestion": "Add input validation to check that id matches the expected format (e.g., starts with 'todo_' and contains valid characters) before querying: if (!/^todo_\\d+_[a-z0-9]+$/.test(id)) { throw new Error('Invalid todo ID format'); }"
+          },
+          {
+            "line": 107,
+            "severity": "medium",
+            "category": "bug-risk",
+            "description": "updateTodoStatus doesn't validate the id parameter and doesn't check if the todo exists before updating. This could silently succeed even when updating a non-existent todo.",
+            "suggestion": "Check the affected row count from the query result or first verify the todo exists: const result = await db.query(query, [completed, id]); if (result.affectedRows === 0) { throw new Error('Todo not found'); }"
+          },
+          {
+            "line": 114,
+            "severity": "medium",
+            "category": "bug-risk",
+            "description": "deleteTodo doesn't validate the id parameter and doesn't verify if the deletion succeeded. This could silently succeed for non-existent IDs.",
+            "suggestion": "Validate the id format and check affected rows: const result = await db.query(query, [id]); if (result.affectedRows === 0) { throw new Error('Todo not found'); }"
+          },
+          {
+            "line": 11,
+            "severity": "low",
+            "category": "best-practice",
+            "description": "The Todo interface uses string for id but doesn't enforce the specific format (todo_{timestamp}_{random}). This creates a loose contract that could accept any string value.",
+            "suggestion": "Consider using a branded type or validation function to ensure IDs always match the expected format: type TodoId = string & { readonly __brand: 'TodoId' }; export function isTodoId(id: string): id is TodoId { return /^todo_\\d+_[a-z0-9]+$/.test(id); }"
+          },
+          {
+            "line": 38,
+            "severity": "low",
+            "category": "maintainability",
+            "description": "The sanitizeInput function is exported but only used internally by createTodo. Exposing it as a public API increases the maintenance burden and potential for misuse.",
+            "suggestion": "Make sanitizeInput a private function (remove export) unless there's a documented need for external consumers to use it. If it must be public, add JSDoc explaining its limitations and appropriate use cases."
+          },
+          {
+            "line": 61,
+            "severity": "low",
+            "category": "best-practice",
+            "description": "The description field is optional in CreateTodoInput but defaults to empty string in createTodo. The behavior for missing vs empty description is unclear.",
+            "suggestion": "Make the behavior explicit by documenting it or by requiring description: description?: string in CreateTodoInput and handling undefined explicitly: const sanitizedDescription = input.description ? sanitizeInput(input.description) : '';"
           }
         ],
-        "overallScore": 82,
-        "summary": "Well-implemented todo functionality with strong security practices (parameterized queries, input sanitization, validation). Code is clean and maintainable. Two issues identified: missing pagination in getAllTodos() and use of non-cryptographic random ID generation."
+        "overallScore": 62,
+        "summary": "Core todo functionality with good security intentions but several implementation issues. Critical concerns include database parameter syntax assumptions, weak ID generation, and incomplete error handling. The code uses parameterized queries correctly but needs validation improvements and better testing integration."
       },
       "testCoverage": {
         "file": "src/todo.ts",
@@ -204,207 +379,255 @@
         "untestedPaths": [
           {
             "type": "function",
-            "location": "createTodo, line 43",
+            "location": "setDatabase, line 5",
+            "priority": "medium",
+            "reasoning": "The setDatabase function is never tested. This is a critical setup function that assigns the module-level database variable used by all CRUD operations",
+            "suggestedTest": "Test that setDatabase correctly assigns the database instance and that subsequent CRUD operations use the set database"
+          },
+          {
+            "type": "function",
+            "location": "generateId, line 22",
+            "priority": "low",
+            "reasoning": "The generateId function has no tests verifying it returns a string of expected format or uniqueness properties",
+            "suggestedTest": "Test that generateId returns a non-empty string and that multiple calls produce different values"
+          },
+          {
+            "type": "function",
+            "location": "createTodo, line 26",
             "priority": "critical",
-            "reasoning": "The createTodo function is the primary business logic for creating todos. While validateTodoInput and sanitizeInput are tested, the createTodo function itself is never invoked in tests. The database call, ID generation, and full todo creation flow are untested.",
-            "suggestedTest": "Add tests for createTodo that verify: (1) valid input creates a todo with correct structure, (2) invalid input throws an error, (3) database query is called with correct parameters, (4) sanitization is applied to title and description, (5) createdAt timestamp is set"
+            "reasoning": "The createTodo function is completely untested. It's a core CRUD operation that integrates validation, sanitization, ID generation, and database storage. No tests verify it calls database.create, sets correct status/timestamps, or returns the created todo",
+            "suggestedTest": "Test createTodo with valid input: verify it validates input, sanitizes it, generates an ID, sets status to 'pending', sets createdAt/updatedAt timestamps, calls database.create, and returns the todo object"
           },
           {
             "type": "function",
-            "location": "getAllTodos, line 62",
+            "location": "getAllTodos, line 40",
             "priority": "high",
-            "reasoning": "getAllTodos function retrieves all todos from the database but is never tested. No verification of query execution, data mapping, or error handling.",
-            "suggestedTest": "Add tests verifying getAllTodos executes the correct query, returns todos sorted by creation date descending, and handles empty result sets"
+            "reasoning": "The getAllTodos function has no tests. Should verify it correctly delegates to database.getAll and returns the result",
+            "suggestedTest": "Test getAllTodos returns the array from database.getAll, including empty array case and multiple todos case"
           },
           {
             "type": "function",
-            "location": "getTodoById, line 68",
+            "location": "getTodoById, line 44",
             "priority": "high",
-            "reasoning": "getTodoById function with parameterized query is untested. The null case when no todo is found and successful retrieval are not verified.",
-            "suggestedTest": "Add tests for getTodoById covering: (1) returns a todo when found, (2) returns null when not found, (3) uses parameterized query with correct ID parameter"
+            "reasoning": "The getTodoById function is untested. Should verify it delegates to database.getById with correct ID parameter and handles both found and not-found cases",
+            "suggestedTest": "Test getTodoById with existing ID returns the todo, and with non-existent ID returns null"
           },
           {
             "type": "function",
-            "location": "updateTodoStatus, line 79",
+            "location": "updateTodoStatus, line 48",
+            "priority": "critical",
+            "reasoning": "The updateTodoStatus function is completely untested. This is a core CRUD operation that modifies todo status and updatedAt timestamp. No tests verify the early return for missing todos, status update, timestamp update, or database.update call",
+            "suggestedTest": "Test updateTodoStatus: returns null when todo doesn't exist, updates status field, updates updatedAt timestamp, calls database.update, and returns the modified todo"
+          },
+          {
+            "type": "function",
+            "location": "deleteTodo, line 59",
             "priority": "high",
-            "reasoning": "updateTodoStatus function is never tested. No verification that the completed status is updated or that the parameterized query is executed correctly.",
-            "suggestedTest": "Add tests verifying updateTodoStatus executes the correct parameterized query with completed status and ID parameters"
-          },
-          {
-            "type": "function",
-            "location": "deleteTodo, line 85",
-            "priority": "high",
-            "reasoning": "deleteTodo function is untested. No verification of deletion execution or parameterized query correctness.",
-            "suggestedTest": "Add tests verifying deleteTodo executes the delete query with correct parameterized ID parameter"
-          },
-          {
-            "type": "function",
-            "location": "generateId, line 91",
-            "priority": "medium",
-            "reasoning": "generateId function is never tested. While used in createTodo, the uniqueness, format, and consistency of generated IDs are not verified.",
-            "suggestedTest": "Add tests verifying generateId returns unique IDs with the expected format (todo_timestamp_randomstring)"
+            "reasoning": "The deleteTodo function has no tests. Should verify it delegates to database.delete and returns the boolean result",
+            "suggestedTest": "Test deleteTodo delegates to database.delete and returns true for successful deletion, false otherwise"
           },
           {
             "type": "edge-case",
-            "location": "sanitizeInput with ampersands, line 37",
-            "priority": "medium",
-            "reasoning": "sanitizeInput does not escape ampersands (&). An input containing & would not be properly escaped, creating a potential XSS vulnerability when combined with other characters.",
-            "suggestedTest": "Add test: sanitizeInput('AT&T') should escape the ampersand as &amp;"
-          },
-          {
-            "type": "edge-case",
-            "location": "validateTodoInput with null/undefined, line 19",
-            "priority": "medium",
-            "reasoning": "validateTodoInput does not explicitly handle null or undefined input parameter. The function would throw an error rather than returning false.",
-            "suggestedTest": "Add tests verifying validateTodoInput handles null and undefined inputs gracefully"
-          },
-          {
-            "type": "edge-case",
-            "location": "createTodo with whitespace-only title, line 43",
-            "priority": "medium",
-            "reasoning": "While validateTodoInput checks for empty strings, a title with only whitespace is rejected by trim() check but the exact behavior after sanitization is not verified in createTodo context.",
-            "suggestedTest": "Add test verifying createTodo with whitespace-only title properly rejects the input"
+            "location": "createTodo, line 26",
+            "priority": "high",
+            "reasoning": "createTodo should be tested with invalid input to ensure validateTodoInput errors are propagated correctly",
+            "suggestedTest": "Test createTodo with empty title throws 'Title is required' error, and with title > 100 chars throws length error"
           },
           {
             "type": "branch",
-            "location": "getTodoById null check, line 71",
+            "location": "updateTodoStatus null check, line 49-51",
             "priority": "high",
-            "reasoning": "The branch that returns null when rows.length === 0 is never exercised in tests. The success case returning rows[0] is also untested.",
-            "suggestedTest": "Add tests for both branches: (1) test when todo exists, (2) test when todo does not exist"
-          },
-          {
-            "type": "edge-case",
-            "location": "createTodo error handling, line 45",
-            "priority": "high",
-            "reasoning": "The error thrown for invalid input is not tested. The exact error message and type should be verified.",
-            "suggestedTest": "Add test verifying createTodo throws an Error with message 'Invalid todo input' when validation fails"
+            "reasoning": "The null check in updateTodoStatus when todo is not found needs explicit testing to verify the early return behavior",
+            "suggestedTest": "Test updateTodoStatus with non-existent ID returns null without calling database.update"
           }
         ],
-        "coverageEstimate": 25,
-        "summary": "Only validateTodoInput and sanitizeInput functions are tested (lines 19-40). Core business logic functions (createTodo, getAllTodos, getTodoById, updateTodoStatus, deleteTodo) representing 60% of the file are completely untested. The generateId utility function is also untested. Critical CRUD operations lack any test coverage despite being the primary functionality of the module."
+        "coverageEstimate": 20,
+        "summary": "Only validateTodoInput and sanitizeInput have tests. All CRUD functions (createTodo, getAllTodos, getTodoById, updateTodoStatus, deleteTodo) are completely untested, along with setDatabase and generateId helper functions"
       },
       "refactorings": {
         "file": "src/todo.ts",
         "suggestions": [
           {
             "type": "extract-function",
-            "location": "sanitizeInput function, lines 38-44",
+            "location": "validateTodoInput, line 14",
             "impact": "medium",
-            "description": "The sanitizeInput function performs four separate replace operations that could be consolidated into a single pass using a character map. This improves performance and readability.",
-            "before": "export function sanitizeInput(input: string): string {\n  return input\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#039;');\n}",
-            "after": "const SANITIZATION_MAP: Record<string, string> = {\n  '<': '&lt;',\n  '>': '&gt;',\n  '\"': '&quot;',\n  \"'\": '&#039;'\n};\n\nexport function sanitizeInput(input: string): string {\n  return input.replace(/[<>\"']/g, (char) => SANITIZATION_MAP[char]);\n}",
-            "benefits": "Reduces the number of string traversals from four to one, improving performance on large inputs. The character map makes it easier to add or modify sanitization rules in the future."
+            "description": "Extract validation constants to improve maintainability and testability",
+            "before": "export function validateTodoInput(input: CreateTodoInput): boolean {\n  if (!input.title || input.title.trim().length === 0) {\n    return false;\n  }\n  if (input.title.length > 200) {\n    return false;\n  }\n  if (input.description && input.description.length > 1000) {\n    return false;\n  }\n  return true;\n}",
+            "after": "const TODO_CONSTRAINTS = {\n  MAX_TITLE_LENGTH: 200,\n  MAX_DESCRIPTION_LENGTH: 1000\n} as const;\n\nexport function validateTodoInput(input: CreateTodoInput): boolean {\n  if (!input.title || input.title.trim().length === 0) {\n    return false;\n  }\n  if (input.title.length > TODO_CONSTRAINTS.MAX_TITLE_LENGTH) {\n    return false;\n  }\n  if (input.description && input.description.length > TODO_CONSTRAINTS.MAX_DESCRIPTION_LENGTH) {\n    return false;\n  }\n  return true;\n}",
+            "benefits": "Centralizes validation rules making them easier to maintain, test, and reuse. The constraints become self-documenting and can be exported for use in UI validation."
           },
           {
             "type": "simplify",
-            "location": "validateTodoInput function, lines 26-36",
+            "location": "validateTodoInput, line 14",
             "impact": "low",
-            "description": "The validation function has multiple early-exit checks that could be combined into a single logical expression for better readability.",
+            "description": "Simplify validation logic by using early returns consistently",
             "before": "export function validateTodoInput(input: CreateTodoInput): boolean {\n  if (!input.title || input.title.trim().length === 0) {\n    return false;\n  }\n  if (input.title.length > 200) {\n    return false;\n  }\n  if (input.description && input.description.length > 1000) {\n    return false;\n  }\n  return true;\n}",
-            "after": "export function validateTodoInput(input: CreateTodoInput): boolean {\n  const titleValid = input.title && input.title.trim().length > 0 && input.title.length <= 200;\n  const descriptionValid = !input.description || input.description.length <= 1000;\n  return titleValid && descriptionValid;\n}",
-            "benefits": "Clearer intent with descriptive intermediate variables. Easier to understand validation rules at a glance and reduces nesting depth."
+            "after": "export function validateTodoInput(input: CreateTodoInput): boolean {\n  const trimmedTitle = input.title?.trim();\n  if (!trimmedTitle || trimmedTitle.length === 0) return false;\n  if (trimmedTitle.length > 200) return false;\n  if (input.description?.length > 1000) return false;\n  return true;\n}",
+            "benefits": "Reduces nesting and improves readability by using consistent early return pattern and optional chaining, making the validation flow clearer."
           },
           {
-            "type": "extract-function",
-            "location": "createTodo function, lines 48-68",
+            "type": "pattern-improvement",
+            "location": "sanitizeInput, line 26",
             "impact": "medium",
-            "description": "The todo object creation and sanitization logic in createTodo could be extracted into a dedicated function to separate concerns and improve testability.",
-            "before": "export async function createTodo(input: CreateTodoInput): Promise<Todo> {\n  if (!validateTodoInput(input)) {\n    throw new Error('Invalid todo input');\n  }\n\n  const sanitizedTitle = sanitizeInput(input.title.trim());\n  const sanitizedDescription = sanitizeInput(input.description || '');\n\n  const todo: Todo = {\n    id: generateId(),\n    title: sanitizedTitle,\n    description: sanitizedDescription,\n    completed: false,\n    createdAt: new Date()\n  };\n\n  // Use parameterized query to prevent SQL injection\n  const query = 'INSERT INTO todos (id, title, description, completed, created_at) VALUES ($1, $2, $3, $4, $5)';\n  const params = [todo.id, todo.title, todo.description, todo.completed, todo.createdAt];\n\n  await db.query(query, params);\n\n  return todo;\n}",
-            "after": "function buildTodoFromInput(input: CreateTodoInput): Todo {\n  return {\n    id: generateId(),\n    title: sanitizeInput(input.title.trim()),\n    description: sanitizeInput(input.description || ''),\n    completed: false,\n    createdAt: new Date()\n  };\n}\n\nexport async function createTodo(input: CreateTodoInput): Promise<Todo> {\n  if (!validateTodoInput(input)) {\n    throw new Error('Invalid todo input');\n  }\n\n  const todo = buildTodoFromInput(input);\n\n  // Use parameterized query to prevent SQL injection\n  const query = 'INSERT INTO todos (id, title, description, completed, created_at) VALUES ($1, $2, $3, $4, $5)';\n  const params = [todo.id, todo.title, todo.description, todo.completed, todo.createdAt];\n\n  await db.query(query, params);\n\n  return todo;\n}",
-            "benefits": "Separates todo object construction from database persistence. Makes createTodo easier to test and understand. The extracted function can be reused or tested independently."
+            "description": "Use a well-tested library for HTML sanitization instead of manual implementation",
+            "before": "export function sanitizeInput(input: string): string {\n  return input\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#039;');\n}",
+            "after": "import { escape } from 'lodash';\n\nexport function sanitizeInput(input: string): string {\n  return escape(input);\n}",
+            "benefits": "Leverages battle-tested library code that handles edge cases and security vulnerabilities, reducing the risk of XSS attacks and maintenance burden."
+          },
+          {
+            "type": "modernize",
+            "location": "generateId, line 79",
+            "impact": "low",
+            "description": "Use crypto.randomUUID() for more robust ID generation",
+            "before": "function generateId(): string {\n  return `todo_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;\n}",
+            "after": "import { randomUUID } from 'crypto';\n\nfunction generateId(): string {\n  return `todo_${randomUUID()}`;\n}",
+            "benefits": "Uses cryptographically secure UUID generation instead of timestamp + Math.random(), eliminating collision risks and improving security. The Node.js crypto module is built-in and follows RFC 4122 standards."
+          },
+          {
+            "type": "pattern-improvement",
+            "location": "createTodo, line 34",
+            "impact": "medium",
+            "description": "Separate data transformation from persistence logic for better separation of concerns",
+            "before": "export async function createTodo(input: CreateTodoInput): Promise<Todo> {\n  if (!validateTodoInput(input)) {\n    throw new Error('Invalid todo input');\n  }\n  const sanitizedTitle = sanitizeInput(input.title.trim());\n  const sanitizedDescription = sanitizeInput(input.description || '');\n  const todo: Todo = {\n    id: generateId(),\n    title: sanitizedTitle,\n    description: sanitizedDescription,\n    completed: false,\n    createdAt: new Date()\n  };\n  const query = 'INSERT INTO todos (id, title, description, completed, created_at) VALUES ($1, $2, $3, $4, $5)';\n  const params = [todo.id, todo.title, todo.description, todo.completed, todo.createdAt];\n  await db.query(query, params);\n  return todo;\n}",
+            "after": "function buildTodoFromInput(input: CreateTodoInput): Todo {\n  return {\n    id: generateId(),\n    title: sanitizeInput(input.title.trim()),\n    description: sanitizeInput(input.description || ''),\n    completed: false,\n    createdAt: new Date()\n  };\n}\n\nexport async function createTodo(input: CreateTodoInput): Promise<Todo> {\n  if (!validateTodoInput(input)) {\n    throw new Error('Invalid todo input');\n  }\n  const todo = buildTodoFromInput(input);\n  const query = 'INSERT INTO todos (id, title, description, completed, created_at) VALUES ($1, $2, $3, $4, $5)';\n  const params = [todo.id, todo.title, todo.description, todo.completed, todo.createdAt];\n  await db.query(query, params);\n  return todo;\n}",
+            "benefits": "Separates todo object construction from database persistence, making the code more testable and easier to maintain. The transformation logic can now be tested independently."
+          },
+          {
+            "type": "rename",
+            "location": "db import, line 1",
+            "impact": "low",
+            "description": "Make database dependency explicit through dependency injection instead of direct import",
+            "before": "import { db } from './database';\n\nexport async function createTodo(input: CreateTodoInput): Promise<Todo> {\n  // ... code using db directly",
+            "after": "import { Database } from './database';\n\nlet dbInstance: Database;\n\nexport function setDatabase(db: Database): void {\n  dbInstance = db;\n}\n\nexport async function createTodo(input: CreateTodoInput): Promise<Todo> {\n  // ... code using dbInstance",
+            "benefits": "Enables proper dependency injection for testing, making it easier to mock the database and test business logic in isolation without relying on module-level state."
           }
         ],
-        "summary": "The todo.ts file has good security practices but contains opportunities for optimization and refactoring. The sanitizeInput function can use a single regex pass, validation logic can be simplified with intermediate variables, and todo object construction can be extracted for better separation of concerns."
+        "summary": "The todo.ts file has several refactoring opportunities: extracting validation constants, using crypto.randomUUID() for ID generation, considering a library for HTML sanitization, separating concerns in createTodo, and implementing dependency injection for better testability."
       }
     },
     {
       "file": "tsconfig.json",
       "codeQuality": {
         "file": "tsconfig.json",
-        "issues": [],
-        "overallScore": 100,
-        "summary": "Well-configured TypeScript compiler options with strict mode enabled, proper module resolution, and appropriate source/output directory structure."
+        "issues": [
+          {
+            "line": 14,
+            "severity": "low",
+            "category": "best-practice",
+            "description": "The exclude array includes '**/*.test.ts' which means test files won't be type-checked by the TypeScript compiler during builds. This could hide type errors in test code.",
+            "suggestion": "Remove '**/*.test.ts' from the exclude array and let TypeScript type-check test files. Test files should still be excluded from the build output via the outDir configuration, which is already correctly set."
+          },
+          {
+            "line": 1,
+            "severity": "info",
+            "category": "best-practice",
+            "description": "Missing 'noUnusedLocals' and 'noUnusedParameters' compiler options which help catch unused variables and parameters that often indicate bugs or incomplete refactoring.",
+            "suggestion": "Add 'noUnusedLocals': true and 'noUnusedParameters': true to the compilerOptions for stricter code quality enforcement."
+          }
+        ],
+        "overallScore": 85,
+        "summary": "Solid TypeScript configuration with strict mode enabled. Minor improvements possible by type-checking test files and enabling additional strictness flags."
       },
       "testCoverage": {
         "file": "tsconfig.json",
         "hasTests": false,
         "testFiles": [],
         "untestedPaths": [],
-        "coverageEstimate": 0,
-        "summary": "TypeScript configuration file. No testing applicable."
+        "coverageEstimate": 100,
+        "summary": "TypeScript configuration file - not testable code, no tests needed"
       },
       "refactorings": {
         "file": "tsconfig.json",
-        "suggestions": [],
-        "summary": "No refactoring needed. The TypeScript configuration is well-structured with appropriate compiler options for strict type checking and ES2020 compatibility."
+        "suggestions": [
+          {
+            "type": "modernize",
+            "location": "compilerOptions, line 3",
+            "impact": "low",
+            "description": "Add recommended strict mode options for better type safety",
+            "before": "\"compilerOptions\": {\n  \"target\": \"ES2020\",\n  \"module\": \"commonjs\",\n  \"outDir\": \"./dist\",\n  \"rootDir\": \"./src\",\n  \"strict\": true,\n  \"esModuleInterop\": true,\n  \"skipLibCheck\": true,\n  \"forceConsistentCasingInFileNames\": true\n}",
+            "after": "\"compilerOptions\": {\n  \"target\": \"ES2020\",\n  \"module\": \"commonjs\",\n  \"outDir\": \"./dist\",\n  \"rootDir\": \"./src\",\n  \"strict\": true,\n  \"esModuleInterop\": true,\n  \"skipLibCheck\": true,\n  \"forceConsistentCasingInFileNames\": true,\n  \"noUncheckedIndexedAccess\": true,\n  \"noImplicitOverride\": true,\n  \"exactOptionalPropertyTypes\": true\n}",
+            "benefits": "Enables additional type safety checks that catch common errors like unchecked array access, missing override keywords, and undefined optional properties, improving code reliability."
+          }
+        ],
+        "summary": "The TypeScript configuration is solid with strict mode enabled. Adding a few additional strict options would provide even better type safety with minimal impact on existing code."
       }
     }
   ],
   "summary": {
     "totalFiles": 8,
-    "overallScore": 95,
-    "criticalIssues": 0,
-    "highPriorityTests": 7,
-    "refactoringOpportunities": 4
+    "overallScore": 79,
+    "criticalIssues": 1,
+    "highPriorityTests": 8,
+    "refactoringOpportunities": 13
   },
   "recommendations": [
     {
       "priority": "critical",
-      "category": "Test Coverage",
-      "description": "Core CRUD operations (createTodo, getAllTodos, getTodoById, updateTodoStatus, deleteTodo) lack test coverage despite being the primary business logic. Only validation and sanitization utilities are tested. This represents a significant gap in test coverage (estimated 25% overall for src/todo.ts).",
+      "category": "Security & Data Integrity",
+      "description": "Address critical security vulnerabilities in src/todo.ts: PostgreSQL-specific parameterized query syntax may not work with other databases and could lead to SQL injection vulnerabilities. The manual HTML sanitization is incomplete and doesn't protect against all XSS vectors. Replace with well-tested libraries (e.g., DOMPurify) and document database requirements clearly.",
       "files": [
         "src/todo.ts"
+      ]
+    },
+    {
+      "priority": "critical",
+      "category": "Test Coverage",
+      "description": "All core CRUD operations (createTodo, getAllTodos, getTodoById, updateTodoStatus, deleteTodo) are completely untested. Current test coverage at ~20% only covers validation and sanitization. Add comprehensive integration tests with mocked database to verify business logic, error handling, and database interactions.",
+      "files": [
+        "src/todo.ts",
+        "src/todo.test.ts"
       ]
     },
     {
       "priority": "high",
-      "category": "Test Coverage",
-      "description": "Missing edge-case tests for sanitizeInput (ampersand escaping), validateTodoInput (null/undefined handling), and createTodo (whitespace-only titles). These edge cases could lead to security vulnerabilities (XSS) or unexpected behavior.",
-      "files": [
-        "src/todo.ts"
-      ]
-    },
-    {
-      "priority": "high",
-      "category": "Performance",
-      "description": "getAllTodos() retrieves all todos without pagination, which will cause performance issues as data grows. Add LIMIT and OFFSET parameters to allow paginated retrieval.",
-      "files": [
-        "src/todo.ts"
-      ]
-    },
-    {
-      "priority": "medium",
-      "category": "Database Implementation",
-      "description": "The MockDatabase.query() method always returns empty arrays and is untested. This mock implementation is non-functional and won't support realistic integration testing. Consider implementing proper mock behavior or replacing with a real database.",
+      "category": "Implementation Completeness",
+      "description": "The MockDatabase implementation is non-functional, always returning empty arrays regardless of operations. This prevents meaningful testing and development. Implement basic in-memory storage using the existing Map data structure to enable proper testing of CRUD operations.",
       "files": [
         "src/database.ts"
       ]
     },
     {
-      "priority": "medium",
-      "category": "Code Quality",
-      "description": "Refactoring opportunities identified: consolidate sanitizeInput's multiple replace operations into a single pass, simplify validateTodoInput logic with intermediate variables, and extract todo object construction into a separate function for better testability.",
+      "priority": "high",
+      "category": "Bug Risk",
+      "description": "The generateId function uses Date.now() + Math.random() which can produce ID collisions in high-throughput scenarios and is not cryptographically secure. Replace with crypto.randomUUID() from Node.js crypto module for collision-resistant, secure ID generation.",
       "files": [
         "src/todo.ts"
       ]
     },
     {
-      "priority": "low",
-      "category": "Security",
-      "description": "generateId() uses Math.random() which is not cryptographically secure. While acceptable for demo IDs, consider using crypto.randomUUID() for production-ready code.",
+      "priority": "medium",
+      "category": "Error Handling & Validation",
+      "description": "CRUD operations (updateTodoStatus, deleteTodo) silently succeed when operating on non-existent todos. Add validation to check affected row counts and throw appropriate errors. Also add ID format validation to prevent invalid inputs from reaching the database layer.",
       "files": [
         "src/todo.ts"
+      ]
+    },
+    {
+      "priority": "medium",
+      "category": "Dependency Management",
+      "description": "Package.json uses caret ranges (^) for all dependencies, allowing automatic minor/patch updates that could introduce breaking changes. Pin critical dependencies to exact versions or use tilde ranges, and ensure package-lock.json is committed for reproducible builds.",
+      "files": [
+        "package.json"
+      ]
+    },
+    {
+      "priority": "low",
+      "category": "Code Quality & Maintainability",
+      "description": "Apply suggested refactorings to improve code maintainability: extract validation constants, implement dependency injection for database, separate data transformation from persistence logic, and add stricter TypeScript compiler options (noUnusedLocals, noUnusedParameters).",
+      "files": [
+        "src/todo.ts",
+        "tsconfig.json"
       ]
     }
   ],
   "metadata": {
-    "analyzedAt": "2026-07-28T00:00:00Z",
-    "duration": 60,
+    "analyzedAt": "2026-07-30T00:00:00Z",
+    "duration": 173320,
     "agentVersions": {
-      "orchestrator": "claude-haiku-4-5-20251001",
-      "codeQualityAnalyzer": "claude-haiku-4-5-20251001",
-      "testCoverageAnalyzer": "claude-haiku-4-5-20251001",
-      "refactoringSuggester": "claude-haiku-4-5-20251001"
+      "orchestrator": "claude-sonnet-4-5-20250929",
+      "codeQualityAnalyzer": "claude-sonnet-4-5-20250929",
+      "testCoverageAnalyzer": "claude-sonnet-4-5-20250929",
+      "refactoringSuggester": "claude-sonnet-4-5-20250929"
     }
   }
 }

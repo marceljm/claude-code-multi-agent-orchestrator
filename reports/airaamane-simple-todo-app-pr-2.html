@@ -47,7 +47,7 @@
 
   <div class="summary">
     <div class="metric">
-      <div class="metric-value">95</div>
+      <div class="metric-value">79</div>
       <div class="metric-label">Overall Score</div>
     </div>
     <div class="metric">
@@ -55,15 +55,15 @@
       <div class="metric-label">Files Reviewed</div>
     </div>
     <div class="metric">
-      <div class="metric-value">0</div>
+      <div class="metric-value">1</div>
       <div class="metric-label">Critical Issues</div>
     </div>
     <div class="metric">
-      <div class="metric-value">7</div>
+      <div class="metric-value">8</div>
       <div class="metric-label">Tests Needed</div>
     </div>
     <div class="metric">
-      <div class="metric-value">4</div>
+      <div class="metric-value">13</div>
       <div class="metric-label">Refactorings</div>
     </div>
   </div>
@@ -72,31 +72,31 @@
   <ul>
       <li class="rec-critical">
         <span class="priority">[CRITICAL]</span>
-        <strong>Test Coverage</strong>: Core CRUD operations (createTodo, getAllTodos, getTodoById, updateTodoStatus, deleteTodo) lack test coverage despite being the primary business logic. Only validation and sanitization utilities are tested. This represents a significant gap in test coverage (estimated 25% overall for src/todo.ts).
+        <strong>Security & Data Integrity</strong>: Address critical security vulnerabilities in src/todo.ts: PostgreSQL-specific parameterized query syntax may not work with other databases and could lead to SQL injection vulnerabilities. The manual HTML sanitization is incomplete and doesn't protect against all XSS vectors. Replace with well-tested libraries (e.g., DOMPurify) and document database requirements clearly.
         <br><small>Files: src/todo.ts</small>
+      </li>
+
+      <li class="rec-critical">
+        <span class="priority">[CRITICAL]</span>
+        <strong>Test Coverage</strong>: All core CRUD operations (createTodo, getAllTodos, getTodoById, updateTodoStatus, deleteTodo) are completely untested. Current test coverage at ~20% only covers validation and sanitization. Add comprehensive integration tests with mocked database to verify business logic, error handling, and database interactions.
+        <br><small>Files: src/todo.ts, src/todo.test.ts</small>
       </li>
 
       <li class="rec-high">
         <span class="priority">[HIGH]</span>
-        <strong>Test Coverage</strong>: Missing edge-case tests for sanitizeInput (ampersand escaping), validateTodoInput (null/undefined handling), and createTodo (whitespace-only titles). These edge cases could lead to security vulnerabilities (XSS) or unexpected behavior.
-        <br><small>Files: src/todo.ts</small>
-      </li>
-
-      <li class="rec-high">
-        <span class="priority">[HIGH]</span>
-        <strong>Performance</strong>: getAllTodos() retrieves all todos without pagination, which will cause performance issues as data grows. Add LIMIT and OFFSET parameters to allow paginated retrieval.
-        <br><small>Files: src/todo.ts</small>
-      </li>
-
-      <li class="rec-medium">
-        <span class="priority">[MEDIUM]</span>
-        <strong>Database Implementation</strong>: The MockDatabase.query() method always returns empty arrays and is untested. This mock implementation is non-functional and won't support realistic integration testing. Consider implementing proper mock behavior or replacing with a real database.
+        <strong>Implementation Completeness</strong>: The MockDatabase implementation is non-functional, always returning empty arrays regardless of operations. This prevents meaningful testing and development. Implement basic in-memory storage using the existing Map data structure to enable proper testing of CRUD operations.
         <br><small>Files: src/database.ts</small>
       </li>
 
+      <li class="rec-high">
+        <span class="priority">[HIGH]</span>
+        <strong>Bug Risk</strong>: The generateId function uses Date.now() + Math.random() which can produce ID collisions in high-throughput scenarios and is not cryptographically secure. Replace with crypto.randomUUID() from Node.js crypto module for collision-resistant, secure ID generation.
+        <br><small>Files: src/todo.ts</small>
+      </li>
+
       <li class="rec-medium">
         <span class="priority">[MEDIUM]</span>
-        <strong>Code Quality</strong>: Refactoring opportunities identified: consolidate sanitizeInput's multiple replace operations into a single pass, simplify validateTodoInput logic with intermediate variables, and extract todo object construction into a separate function for better testability.
+        <strong>Error Handling & Validation</strong>: CRUD operations (updateTodoStatus, deleteTodo) silently succeed when operating on non-existent todos. Add validation to check affected row counts and throw appropriate errors. Also add ID format validation to prevent invalid inputs from reaching the database layer.
         <br><small>Files: src/todo.ts</small>
       </li>
     </ul>
@@ -114,7 +114,7 @@
   </ul>
 
   <footer>
-    Generated at 2026-07-28T00:00:00Z • Duration: 60ms
+    Generated at 2026-07-30T00:00:00Z • Duration: 173320ms
   </footer>
 </body>
 </html>

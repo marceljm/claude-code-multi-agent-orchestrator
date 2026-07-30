@@ -47,7 +47,7 @@
 
   <div class="summary">
     <div class="metric">
-      <div class="metric-value">96</div>
+      <div class="metric-value">61</div>
       <div class="metric-label">Overall Score</div>
     </div>
     <div class="metric">
@@ -55,15 +55,15 @@
       <div class="metric-label">Files Reviewed</div>
     </div>
     <div class="metric">
-      <div class="metric-value">0</div>
+      <div class="metric-value">3</div>
       <div class="metric-label">Critical Issues</div>
     </div>
     <div class="metric">
-      <div class="metric-value">10</div>
+      <div class="metric-value">7</div>
       <div class="metric-label">Tests Needed</div>
     </div>
     <div class="metric">
-      <div class="metric-value">5</div>
+      <div class="metric-value">11</div>
       <div class="metric-label">Refactorings</div>
     </div>
   </div>
@@ -72,32 +72,32 @@
   <ul>
       <li class="rec-critical">
         <span class="priority">[CRITICAL]</span>
-        <strong>Test Coverage - Core CRUD Operations</strong>: Five critical untested CRUD functions exist in src/todo.ts: createTodo, getAllTodos, getTodoById, updateTodoStatus, and deleteTodo. These are the core business logic of the application and have zero test coverage. This creates significant risk when merging to main.
+        <strong>PR Integrity & Security</strong>: REJECT THIS PULL REQUEST IMMEDIATELY. The PR title and description claim to add 'premium subscription features' with payment processing and subscription tiers, but the actual code contains ZERO payment or subscription implementation. This is evident across all files: no payment dependencies in package.json, no payment-related code in src/todo.ts, and the README describes a basic todo app. This severe mismatch indicates either malicious code injection disguised by misleading metadata, wrong files committed, or fraudulent PR description to bypass review.
+        <br><small>Files: README.md, package.json, src/todo.ts</small>
+      </li>
+
+      <li class="rec-critical">
+        <span class="priority">[CRITICAL]</span>
+        <strong>Test Coverage</strong>: Critical functions lack any test coverage. The createTodo function, which combines validation, sanitization, ID generation, and database operations, has zero tests despite being imported in the test file. Five other major functions (getAllTodos, getTodoById, updateTodoStatus, deleteTodo) are also completely untested. This represents a 75% gap in functional coverage.
+        <br><small>Files: src/todo.ts, src/todo.test.ts</small>
+      </li>
+
+      <li class="rec-high">
+        <span class="priority">[HIGH]</span>
+        <strong>Security - XSS Prevention</strong>: The sanitizeInput function provides inadequate XSS protection. It only escapes 4 HTML entities and doesn't handle JavaScript event handlers, data URIs, or other execution contexts. Additionally, it's applied at storage time rather than render time, which can cause data loss and doesn't protect against all attack vectors. Use a battle-tested library like DOMPurify or sanitize-html instead.
         <br><small>Files: src/todo.ts</small>
       </li>
 
       <li class="rec-high">
         <span class="priority">[HIGH]</span>
-        <strong>Test Coverage - Database Integration</strong>: src/database.ts has zero test coverage. The MockDatabase class and exported db instance are untested, limiting the ability to validate integration between the todo module and database layer. This should be addressed before production deployment.
+        <strong>Security - ID Generation</strong>: The generateId function uses Date.now() and Math.random(), which are not cryptographically secure and have collision risks. For a system handling user data, IDs must be unguessable and guaranteed unique. Replace with crypto.randomUUID() from Node.js crypto module.
+        <br><small>Files: src/todo.ts</small>
+      </li>
+
+      <li class="rec-high">
+        <span class="priority">[HIGH]</span>
+        <strong>Type Safety</strong>: Database interface uses 'any' type for query parameters and return values, completely bypassing TypeScript's type system. This creates type confusion vulnerabilities and runtime errors. Make the interface generic or use unknown[] to maintain type safety while supporting parameterized queries.
         <br><small>Files: src/database.ts</small>
-      </li>
-
-      <li class="rec-high">
-        <span class="priority">[HIGH]</span>
-        <strong>Test Coverage - Error Handling</strong>: No tests verify error handling behavior when database operations fail. All CRUD operations in src/todo.ts and database operations in src/database.ts lack error scenario coverage. Add tests for database failures, validation errors, and edge cases.
-        <br><small>Files: src/todo.ts, src/database.ts</small>
-      </li>
-
-      <li class="rec-medium">
-        <span class="priority">[MEDIUM]</span>
-        <strong>Code Quality - ID Generation</strong>: The generateId function uses timestamp + random suffix without collision guarantee. At high throughput (multiple todos created within the same millisecond), ID conflicts are theoretically possible. Consider using UUID or nanoid library for guaranteed uniqueness.
-        <br><small>Files: src/todo.ts</small>
-      </li>
-
-      <li class="rec-medium">
-        <span class="priority">[MEDIUM]</span>
-        <strong>Code Refactoring - Validation Logic</strong>: Validation logic in src/todo.ts should be decomposed into focused helper functions (validateTitleExists, validateTitleLength, validateDescriptionLength) to improve testability and maintainability. This enables independent testing of each validation concern.
-        <br><small>Files: src/todo.ts</small>
       </li>
     </ul>
 
@@ -114,7 +114,7 @@
   </ul>
 
   <footer>
-    Generated at 2026-07-28T00:00:00Z • Duration: 60000ms
+    Generated at 2026-07-30T00:00:00.000Z • Duration: 164830ms
   </footer>
 </body>
 </html>
